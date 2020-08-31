@@ -1,0 +1,3911 @@
+Parametrim:
+LOAD חברה, 
+     ODBC, 
+     TNS, 
+     [דרייבר],
+     [שם שרת מלא],
+     [כונן],
+     [שיוך עובד], 
+     [קוד מועדון מינימאלי], 
+     [מחסן ראשי], 
+     [אופן חישוב עלות],
+     [שנים מלאות למשיכה],
+     [חודשים למלאי לתאריך],
+    [ימים לטעינה יומית]
+FROM
+[https://docs.google.com/spreadsheets/d/e/2PACX-1vRDP6qcOxUrbHlld_aZQIBTCfx6K3h5sQ_5Sd3Uup3tuS6MTT_ruKz-jJwlroMqev3z1vciLHzYmyAk/pub?gid=0&single=true&output=csv]
+(txt, utf8, embedded labels, delimiter is ',', msq)
+Where
+	חברה = '$(vCompany)';
+
+LET vCompany = Peek('חברה',0,'Parametrim');
+LET vODBC = Peek('ODBC',0,'Parametrim');
+LET vTNS = Peek('TNS',0,'Parametrim');
+LET vDriver = Peek('דרייבר',0,'Parametrim');
+LET vKonan = Peek('כונן',0,'Parametrim');
+LET vServer = Peek('שם שרת מלא',0,'Parametrim');
+LET vFullYearsBack = Peek('שנים מלאות למשיכה',0,'Parametrim');
+LET vMonthsBack_Mli = Peek('חודשים למלאי לתאריך',0,'Parametrim');
+LET vIncrementalLoadDays = Peek('ימים לטעינה יומית',0,'Parametrim');
+
+If vDriver = '64' then    
+	ODBC CONNECT TO [$(vODBC);DBQ=$(vTNS)] (UserId is $(vUser), Password is $(vPassword));
+else
+	ODBC CONNECT32 TO [$(vODBC);DBQ=$(vTNS)] (UserId is $(vUser), Password is $(vPassword));
+endif
+
+SET ThousandSep=',';
+SET DecimalSep='.';
+SET MoneyThousandSep=',';
+SET MoneyDecimalSep='.';
+SET MoneyFormat='₪ #,##0.00;₪-#,##0.00';
+SET TimeFormat='hh:mm:ss';
+SET DateFormat='DD/MM/YYYY';
+SET TimestampFormat='DD/MM/YYYY hh:mm:ss[.fff]';
+SET FirstWeekDay=6;
+SET BrokenWeeks=1;
+SET ReferenceDay=0;
+SET FirstMonthOfYear=1;
+SET CollationLocale='he-IL';
+SET MonthNames='ינו;פבר;מרץ;אפר;מאי;יונ;יול;אוג;ספט;אוק;נוב;דצמ';
+SET LongMonthNames='ינואר;פברואר;מרץ;אפריל;מאי;יוני;יולי;אוגוסט;ספטמבר;אוקטובר;נובמבר;דצמבר';
+SET DayNames='ב;ג;ד;ה;ו;ש;א';
+SET LongDayNames='יום שני;יום שלישי;יום רביעי;יום חמישי;יום שישי;שבת;יום ראשון';
+
+SET HidePrefix = '$';
+
+
+//////////////////////////////////////////////////////////////////////
+
+let vQvdPath = '$(vKonan)' & ':\AspectBI\QVD';
+
+//////////////////////////////////////////////////////////////////////
+
+LET vLoadFrom = Year(Today())-$(vFullYearsBack) & '0101';
+LET vLoadFrom_mli = date(today()-(30 * $(vMonthsBack_Mli)),'YYYYMMDD');
+LET vDATE=today(); 
+
+LET vToday=Year(Today())&num(Month(today()),00)& num(day(Today()),00);
+Let vModelName = DocumentTitle();
+
+LET  vOfenHishuvAlut= Peek('אופן חישוב עלות',0,'Parametrim');
+LET vShiuchOver = Peek('שיוך עובד');
+LET vMoadon = Peek('קוד מועדון מינימאלי');
+LET vMahsan_rashi= Peek('מחסן ראשי');
+
+If Hour(Now())>=20 or Hour(Now())<=6 then
+	Set vFullLoadTime = 'Yes';
+else
+	Set vFullLoadTime = 'No';
+EndIf
+
+LET vIncrementalFromDate = Year(Today()-$(vIncrementalLoadDays)) &
+	Num(Month(Today()-$(vIncrementalLoadDays)),'00') & Num(Day(Today()-$(vIncrementalLoadDays)),'00');
+//-------------------------------- 
+
+If vFullLoadTime = 'Yes' or IsNull(QvdCreateTime('$(vQvdPath)\$(vCompany)_Hanuyot.qvd')) then
+Hanuyot:
+select
+///
+	han.sttos_pil,
+    han.ishov,
+    han.mchiron,
+    han.ktobt,
+    han.mikod,
+    han.msbit,
+    han.tlponim,
+    han.pks,
+    han.ish_kshrshm_mkotsr,
+    han.mskrtst_anchsh,
+    han.osch_morshatzotchsh,
+    hann.mspr_krtis as chnot_999999la_pil,
+    han.tlpon_slolri,
+    han.tlponim_2,
+    ams.ktobt_alktronit,
+    lak_av.tor as tor_lakoh_av,
+    han.client_emp,
+	kup.mspr_krtis as kod_kupa,
+    //case when kup.chnot_999999la_pil>0  and   kup.chnot_999999la_pil in (select mspr_krtis from krtisim  where kbotsa in (1,3))    then kup.chnot_999999la_pil else
+    kup.mspr_krtis as kod_hanut,
+ 	han.tor as shem_hanut,
+ 	tts.tor_tni__tshlom,
+ 	mnh.tor as menahel,
+ 	lka.tor as lakocah_av,
+ 	soc.tor as sochen,
+ 	mgv1.tor_sivug as migvan1,
+ 	mgv2.tor_sivug as migvan2,
+ 	mgv3.tor_sivug as migvan3,
+ 	mgv4.tor_sivug as migvan4,
+ 	mgv5.tor_sivug as migvan5,
+ 	mgv6.tor_sivug as migvan6,
+    mgv7.tor_sivug as migvan7,
+ 	mgv8.tor_sivug as migvan8,
+ 	mgv9.tor_sivug as migvan9,
+ 	kup.mgoon_1 as kod_migvan1,
+ 	kup.mgoon_2 as kod_migvan2,
+ 	kup.mgoon_3 as kod_migvan3,
+ 	kup.mgoon_4 as kod_migvan4,
+ 	kup.mgoon_5 as kod_migvan5,
+ 	kup.mgoon_6 as kod_migvan6,
+    kup.mgoon_7 as kod_migvan7,
+ 	kup.mgoon_8 as kod_migvan8,
+ 	kup.mgoon_9 as kod_migvan9,
+    tts.kod_tni_tshlom as kod_tni__tshlom,
+    lka.mspr_krtis as kod_lakocah_av,
+    soc.mspr_krtis as kod_sochen,
+    res.mspr_krtis as kod_reshet ,
+    res.tor as reshet,
+    kup.shetach_chnut,
+    kup.mocher,
+    hann.tor as shiuc_hanut
+from 
+ 	krtisim kup
+ 	left outer join krtisim han
+		on han.kbotsa=3
+		and case when kup.chnot_999999la_pil>0 then kup.chnot_999999la_pil else kup.mspr_krtis end = han.mspr_krtis
+ 	left outer join tni_tshlom tts
+ 		on han.kod_tni_tshlom = tts.kod_tni_tshlom
+ 	left outer join krtisim mnh
+		on han.kbotsa=4
+		and kup.mocher = mnh.mspr_krtis
+	left outer join krtisim lka
+		on lka.kbotsa=3
+		and han.sioog_1sokn = lka.mspr_krtis
+ 	left outer join krtisim soc
+		on soc.kbotsa=4
+		and han.kod_moadon__sioog_3 = soc.mspr_krtis
+ 	left outer join krtisim res
+		on res.kbotsa=20
+		and han.chain_number = res.mspr_krtis
+ 	left outer join sivug_nosaf mgv1
+ 		on kup.mgoon_1 = mgv1.kod_tt_sivog
+ 		and mgv1.mspr_sivug = 301
+	left outer join sivug_nosaf mgv2
+ 		on kup.mgoon_2 = mgv2.kod_tt_sivog
+ 		and mgv2.mspr_sivug = 302
+ 	left outer join sivug_nosaf mgv3
+ 		on kup.mgoon_3 = mgv3.kod_tt_sivog
+ 		and mgv3.mspr_sivug = 303
+ 	left outer join sivug_nosaf mgv4
+ 		on kup.mgoon_4 = mgv4.kod_tt_sivog
+ 		and mgv4.mspr_sivug = 304
+	left outer join sivug_nosaf mgv5
+ 		on kup.mgoon_5 = mgv5.kod_tt_sivog
+ 		and mgv5.mspr_sivug = 305
+ 	left outer join sivug_nosaf mgv6
+ 		on kup.mgoon_6 = mgv6.kod_tt_sivog
+ 		and mgv6.mspr_sivug = 306
+        left outer join sivug_nosaf mgv7
+ 		on kup.mgoon_7= mgv7.kod_tt_sivog
+ 		and mgv7.mspr_sivug = 307
+ 	left outer join sivug_nosaf mgv8
+ 		on kup.mgoon_8 = mgv8.kod_tt_sivog
+ 		and mgv8.mspr_sivug = 308
+ 	left outer join sivug_nosaf mgv9
+ 		on kup.mgoon_9 = mgv9.kod_tt_sivog
+ 		and mgv9.mspr_sivug = 309
+        	left outer join amshkh_lkrtisim ams
+		on ams.mspr_krtis=han.mspr_krtis
+        and ams.kbosta_krtisim=3
+         left outer join krtisim lak_av
+		on lak_av.kbotsa=3
+		and han.sioog_1sokn = lak_av.mspr_krtis
+        left outer join krtisim hann
+		on hann.kbotsa=3
+		and han.chnot_999999la_pil = hann.mspr_krtis
+where		
+	kup.kbotsa=3
+;
+STORE Hanuyot into $(vQvdPath)\$(vCompany)_Hanuyot.qvd (qvd);
+DROP Table Hanuyot;
+EndIf
+
+//---------------------------
+
+If vFullLoadTime = 'Yes' or IsNull(QvdCreateTime('$(vQvdPath)\$(vCompany)_Lakochot.qvd')) then
+Lakochot:
+select 
+    lak.sttos_pil,
+    lak.ishov,
+    lak.tarikh_lida,
+    lak.mshtmsh,
+    lak.mchiron,
+    lak.ktobt,
+    lak.mikod,
+    lak.msbit,
+    lak.tlponim,
+    lak.pks,
+    lak.ish_kshrshm_mkotsr,
+    lak.mskrtst_anchsh,
+    lak.achoz_nikoi,
+    lak.osch_morshatzotchsh,
+    lak.isok,
+    lak.aarot,
+    lak.tarikh_adkon,
+    han.mspr_krtis as chnot_999999la_pil,
+    lak.chodsh_oiom_lida,
+    lak.tlpon_slolri,
+    lak.tlponim_2,
+    ams.ktobt_alktronit,
+    lak_av.tor as tor_lakoh_av   ,
+    lak.client_emp,
+    res.mspr_krtis as kod_reshet ,
+    res.tor as reshet,
+    soc.tor as sochen,
+    lak.mspr_krtis,
+    lak.rzrba_lshabr_tlpon_slolri,
+    lak.btokf_ad,
+    lak.tarikh_aska_achrona,
+    lak.tarikh_pticha, 
+    lak.sioog_1sokn,
+    lak.tor,
+    lak.sioog_2mkpil_lmam,
+    lak.kod_moadon__sioog_3,
+    lak.obligo_lkoach,
+    lak.sach_knia_llkoach,
+    lak.itra_ltodot_mshloach,
+    lak.nshlach_lmgnot,
+    lak.min,
+    lak.tarikh_lida_mshoar,
+    lak.sttos,
+    lak.chain_number,
+    lak.alow_email,
+    lak.alow_mail,
+    lak.alow_sms,
+    lak.loyalty_prog_date,
+    lak.tor nvarchar,
+    lak.itrt_krdit_knia,
+    lak.itrt_lkochmsgrt_mshra,
+    lak.achoz_ancha,
+    lak.tikoni_itra,
+    lak.dira,
+    lak.renew_date,
+    lak.knisa ,
+    lak.join_num_form,
+    ams.kbosta_krtisim,
+    ams.ktobt_alktronit2,
+    ams.additonal_id,
+    tts.tor_tni__tshlom ,
+    mg1.tor_sivug as migvan1,
+ 	mg2.tor_sivug as migvan2,
+ 	mg3.tor_sivug as migvan3,
+ 	mg4.tor_sivug as migvan4,
+   	mg5.tor_sivug as migvan5,
+ 	mg6.tor_sivug as migvan6,
+    mg7.tor_sivug as migvan7,
+	mg8.tor_sivug as migvan8,
+ 	mg9.tor_sivug as migvan9,
+    mg1.kod_tt_sivog as kod_migvan1,
+ 	mg2.kod_tt_sivog as kod_migvan2,
+ 	mg3.kod_tt_sivog as kod_migvan3,
+ 	mg4.kod_tt_sivog as kod_migvan4,
+ 	mg5.kod_tt_sivog as kod_migvan5,
+ 	mg6.kod_tt_sivog as kod_migvan6,
+    mg7.kod_tt_sivog as kod_migvan7,
+ 	mg8.kod_tt_sivog as kod_migvan8,
+ 	mg9.kod_tt_sivog as kod_migvan9,
+    tts.kod_tni_tshlom,
+    han.tor as shiuc_hanut,
+    '$(vMoadon)' as haver_moadon,
+    lak_av.mspr_krtis as lakoc_av,
+    soc.mspr_krtis as sochen_lak
+from
+	krtisim lak
+	left outer join tni_tshlom tts
+ 		on lak.kod_tni_tshlom = tts.kod_tni_tshlom
+ 	left join amshkh_lkrtisim ams
+		on ams.mspr_krtis=lak.mspr_krtis
+		and ams.kbosta_krtisim=1
+    left outer join sivug_nosaf mg1
+ 		on lak.mgoon_1 = mg1.kod_tt_sivog
+ 		and mg1.mspr_sivug = 11
+ 	left outer join sivug_nosaf mg2
+ 		on lak.mgoon_2 = mg2.kod_tt_sivog
+ 		and mg2.mspr_sivug = 12
+ 	left outer join sivug_nosaf mg3
+ 		on lak.mgoon_3 = mg3.kod_tt_sivog
+ 		and mg3.mspr_sivug = 13
+ 	left outer join sivug_nosaf mg4
+ 		on lak.mgoon_4 = mg4.kod_tt_sivog
+ 		and mg4.mspr_sivug = 14
+ 	left outer join sivug_nosaf mg5
+ 		on lak.mgoon_5 = mg5.kod_tt_sivog
+ 		and mg5.mspr_sivug = 15
+ 	left outer join sivug_nosaf mg6
+ 		on lak.mgoon_6 = mg6.kod_tt_sivog
+ 		and mg6.mspr_sivug = 16
+    left outer join sivug_nosaf mg7
+ 		on lak.mgoon_7 = mg7.kod_tt_sivog
+ 		and mg6.mspr_sivug = 17
+    left outer join sivug_nosaf mg8
+ 		on lak.mgoon_8 = mg8.kod_tt_sivog
+ 		and mg6.mspr_sivug = 18
+    left outer join sivug_nosaf mg9
+ 		on lak.mgoon_9 = mg9.kod_tt_sivog
+ 		and mg6.mspr_sivug = 19
+    left outer join krtisim han
+		on han.kbotsa=3
+		and lak.chnot_999999la_pil = han.mspr_krtis
+    left outer join krtisim lak_av
+		on lak_av.kbotsa=1
+		and lak.sioog_1sokn = lak_av.mspr_krtis
+        left outer join krtisim res	on res.kbotsa=20
+		and lak.chain_number = res.mspr_krtis
+        left outer join krtisim soc
+		on soc.kbotsa=4
+		and han.kod_moadon__sioog_3 = soc.mspr_krtis
+where 
+	lak.kbotsa=1
+;
+STORE Lakochot into $(vQvdPath)\$(vCompany)_Lakochot.qvd (qvd); 
+DROP Table Lakochot;
+
+EndIf
+
+ACHOZ_MAM_BTOKF:
+select 
+achoz_mam_btokf
+from
+bkra;
+STORE ACHOZ_MAM_BTOKF into $(vQvdPath)\$(vCompany)_ACHOZ_MAM_BTOKF.qvd (qvd); 
+DROP Table ACHOZ_MAM_BTOKF;
+//-----------------------
+
+If vFullLoadTime = 'Yes' or IsNull(QvdCreateTime('$(vQvdPath)\$(vCompany)_Pritim.qvd')) then
+Pritim:
+Load 
+*,
+text(kod_prit2) AS KOD_PRIT,
+text(mptach_dgm2) AS MPTACH_DGM;
+
+select
+	pri.location,
+	pri.kod_prit as "kod_prit2",
+	pri.tor_prit,
+	pri.mptach_dgm as "mptach_dgm2",
+ 	pri.kod_spk,
+//  	spk.tor as shem_sapak,
+ 	pri.mida,
+ 	pri.kod_tsba,
+ 	tze.tsba,
+	sug.tor_sog,
+ 	sug.kod_sog,
+	mg1.tor_sivug as migvan1,
+ 	mg2.tor_sivug as migvan2,
+ 	mg3.tor_sivug as migvan3,
+ 	mg4.tor_sivug as migvan4,
+   	mg5.tor_sivug as migvan5,
+ 	mg6.tor_sivug as migvan6,
+ 	pri.mchir_1,
+ 	pri.mchir_2,
+	pri.mchir_3,
+ 	pri.mchir_4,
+ 	pri.mchir_5,
+ 	pri.mchir_6,
+ 	pri.alot_lichida,
+    nosaf1.kod_tt_sivog as sioog_nosf_1,
+    nosaf1.tor_sivug as sivog_nosaf_1_prit,
+	nosaf2.kod_tt_sivog as sioog_nosf_2,
+    nosaf2.tor_sivug as sivog_nosaf_2_prit,
+	nosaf3.kod_tt_sivog as sioog_nosf_3,
+    nosaf3.tor_sivug as sivog_nosaf_3_prit,
+    pri.mgoon_1 as kod_migvan1,
+  	pri.mgoon_2 as kod_migvan2,
+ 	pri.mgoon_3 as kod_migvan3,
+ 	pri.mgoon_4 as kod_migvan4,
+ 	pri.mgoon_5 as kod_migvan5,
+ 	pri.mgoon_6 as kod_migvan6,
+   
+    dgm.tor_dgm
+from 
+	pritim pri
+	left outer join sogi_prit sug
+		on pri.sog_prit = sug.kod_sog
+    left join 	dgmim dgm
+    on
+    dgm.mptach_dgm=pri.mptach_dgm
+	left outer join tblt_tsbim tze
+	 	on pri.kod_tsba = tze.kod
+ 	left outer join sivug_nosaf mg1
+ 		on pri.mgoon_1 = mg1.kod_tt_sivog
+ 		and mg1.mspr_sivug = 11
+ 	left outer join sivug_nosaf mg2
+ 		on pri.mgoon_2 = mg2.kod_tt_sivog
+ 		and mg2.mspr_sivug = 12
+ 	left outer join sivug_nosaf mg3
+ 		on pri.mgoon_3 = mg3.kod_tt_sivog
+ 		and mg3.mspr_sivug = 13
+ 	left outer join sivug_nosaf mg4
+ 		on pri.mgoon_4 = mg4.kod_tt_sivog
+ 		and mg4.mspr_sivug = 14
+ 	left outer join sivug_nosaf mg5
+ 		on pri.mgoon_5 = mg5.kod_tt_sivog
+ 		and mg5.mspr_sivug = 15
+ 	left outer join sivug_nosaf mg6
+ 		on pri.mgoon_6 = mg6.kod_tt_sivog
+ 		and mg6.mspr_sivug = 16    
+   left outer join sivug_nosaf nosaf1
+ 		on pri.sioog_nosf_1 = nosaf1.kod_tt_sivog
+ 		and nosaf1.mspr_sivug = 1
+    left outer join sivug_nosaf nosaf2
+ 		on pri.sioog_nosf_2 = nosaf2.kod_tt_sivog
+ 		and nosaf2.mspr_sivug = 2
+   left outer join sivug_nosaf nosaf3
+ 		on pri.sioog_nosf_3 = nosaf3.kod_tt_sivog
+ 		and nosaf3.mspr_sivug = 3
+;
+
+STORE Pritim into $(vQvdPath)\$(vCompany)_Pritim.qvd (qvd);
+DROP Table Pritim;
+EndIf
+
+//---------------------------
+
+If vFullLoadTime = 'Yes' or IsNull(QvdCreateTime('$(vQvdPath)\$(vCompany)_Dgamim.qvd')) then
+Dgamim:
+Load 
+*,
+text(mptach_dgm2) AS MPTACH_DGM;
+
+select
+	dgm.modelist,
+	dgm.mptach_dgm as "mptach_dgm2",
+    mtg.kod_motg,
+	dgm.tor_dgm,
+	dgm.ona,
+	dgm.shna,
+ 	mtg.tor_motg,
+ 	bdm.tor_bd,
+ 	dgm.spk,
+// 	spk.tor as shem_sapak,
+ 	dgm.alot,
+ 	dgm.kolktsia,
+    kol.tor,
+    ona.tor_ona,
+ 	dgm.mchir_1,
+ 	dgm.mchir_2,
+ 	dgm.mchir_3,
+ 	dgm.mchiron_4,
+ 	dgm.mchiron_5,
+ 	dgm.mchiron_6,
+ 	mg1.tor_sivug as migvan1,
+	mg2.tor_sivug as migvan2, 
+ 	mg3.tor_sivug as migvan3,
+ 	mg4.tor_sivug as migvan4,
+ 	mg5.tor_sivug as migvan5,
+ 	mg6.tor_sivug as migvan6,
+ 	dgm.by_waight,
+	dgm.sog_prit,
+ 	dgm.srgl_midot,
+	dgm.yechidat_mida,
+	dgm.osef,
+	dgm.code_itsrn,
+	dgm.tor_itsrn,
+	dgm.wash_code,
+	dgm.location,
+ 	wsh.desc_heb,
+ 	yec.teur_mida,
+    dgm.mgoon1 as kod_migvan1,
+ 	dgm.mgoon2 as kod_migvan2,
+ 	dgm.mgoon3 as kod_migvan3,
+ 	dgm.mgoon4 as kod_migvan4,
+ 	dgm.mgoon5 as kod_migvan5,
+ 	dgm.mgoon6 as kod_migvan6,
+    bdm.kod_bd,
+   	dgm.desiner,
+    des.tor as tor_desiner,
+    des_modelist.tor as tor_modelist
+from
+	dgmim dgm   
+ 	left outer join tblt_motgim mtg
+		on dgm.dgmmotg = mtg.kod_motg 
+	left outer join sogi_bdim bdm
+		on dgm.sog_bd = bdm.kod_bd
+	left outer join wash_instructions wsh
+		on dgm.wash_code=wsh.wash_code
+	left outer join tavlat_yechidot_mida yec
+		on yec.kod_mida=dgm.yechidat_mida
+//  	left outer join krtisim spk
+// 		 on dgm.spk = spk.mspr_krtis
+// 		 and spk.kbotsa = 2
+ 	left outer join sivug_nosaf mg1
+ 		on dgm.mgoon1 = mg1.kod_tt_sivog
+ 		and mg1.mspr_sivug = 11
+ 	left outer join sivug_nosaf mg2
+	 	on dgm.mgoon2 = mg2.kod_tt_sivog
+	 	and mg2.mspr_sivug = 12
+ 	left outer join sivug_nosaf mg3
+	 	on dgm.mgoon3 = mg3.kod_tt_sivog
+	 	and mg3.mspr_sivug = 13
+ 	left outer join sivug_nosaf mg4
+	 	on dgm.mgoon4 = mg4.kod_tt_sivog
+	 	and mg4.mspr_sivug = 14
+ 	left outer join sivug_nosaf mg5
+	 	on dgm.mgoon5 = mg5.kod_tt_sivog
+	 	and mg5.mspr_sivug = 15
+	left outer join sivug_nosaf mg6
+	 	on dgm.mgoon6 = mg6.kod_tt_sivog
+	 	and mg6.mspr_sivug = 16
+    left join 
+krtisim des
+on 
+dgm.desiner=des.mspr_krtis
+and 
+des.kbotsa=4
+    left join 
+krtisim des_modelist
+on 
+dgm.modelist=des_modelist.mspr_krtis
+and 
+des_modelist.kbotsa=4
+left join tblt_kolktsiot  kol
+on
+dgm.kolktsia=kol.kod_kolktsia
+
+left join tblt_onot ona
+on
+dgm.ona=ona.ona
+;
+STORE Dgamim into $(vQvdPath)\$(vCompany)_Dgamim.qvd (qvd);
+DROP Table Dgamim;
+EndIf
+
+//-------------------------------- 
+
+If vFullLoadTime = 'Yes' or IsNull(QvdCreateTime('$(vQvdPath)\$(vCompany)_Sapakim.qvd')) then
+Sapakim:
+select
+	spk.mspr_krtis as kod_sapak,
+	spk.tor as tor_sapak,
+ 	mgv1.tor_sivug as migvan1,
+ 	mgv2.tor_sivug as migvan2,
+ 	mgv3.tor_sivug as migvan3,
+ 	mgv4.tor_sivug as migvan4,
+ 	mgv5.tor_sivug as migvan5,
+ 	mgv6.tor_sivug as migvan6,
+    mgv7.tor_sivug as migvan7,
+ 	mgv8.tor_sivug as migvan8,
+ 	mgv9.tor_sivug as migvan9,
+ 	spk.mgoon_1 as kod_migvan1,
+ 	spk.mgoon_2 as kod_migvan2,
+ 	spk.mgoon_3 as kod_migvan3,
+ 	spk.mgoon_4 as kod_migvan4,
+ 	spk.mgoon_5 as kod_migvan5,
+ 	spk.mgoon_6 as kod_migvan6,
+    spk.mgoon_7 as kod_migvan7,
+ 	spk.mgoon_8 as kod_migvan8,
+ 	spk.mgoon_9 as kod_migvan9
+from 
+ 	krtisim spk
+ 	left outer join sivug_nosaf mgv1
+ 		on spk.mgoon_1 = mgv1.kod_tt_sivog
+ 		and mgv1.mspr_sivug = 301
+	left outer join sivug_nosaf mgv2
+ 		on spk.mgoon_2 = mgv2.kod_tt_sivog
+ 		and mgv2.mspr_sivug = 302
+ 	left outer join sivug_nosaf mgv3
+ 		on spk.mgoon_3 = mgv3.kod_tt_sivog
+ 		and mgv3.mspr_sivug = 303
+ 	left outer join sivug_nosaf mgv4
+ 		on spk.mgoon_4 = mgv4.kod_tt_sivog
+ 		and mgv4.mspr_sivug = 304
+	left outer join sivug_nosaf mgv5
+ 		on spk.mgoon_5 = mgv5.kod_tt_sivog
+ 		and mgv5.mspr_sivug = 305
+ 	left outer join sivug_nosaf mgv6
+ 		on spk.mgoon_6 = mgv6.kod_tt_sivog
+ 		and mgv6.mspr_sivug = 306
+        left outer join sivug_nosaf mgv7
+ 		on spk.mgoon_7= mgv7.kod_tt_sivog
+ 		and mgv7.mspr_sivug = 307
+ 	left outer join sivug_nosaf mgv8
+ 		on spk.mgoon_8 = mgv6.kod_tt_sivog
+ 		and mgv8.mspr_sivug = 308
+ 	left outer join sivug_nosaf mgv9
+ 		on spk.mgoon_9 = mgv9.kod_tt_sivog
+ 		and mgv9.mspr_sivug = 309 
+where		
+	spk.kbotsa=2
+ ;
+ 
+STORE Sapakim into $(vQvdPath)\$(vCompany)_Sapakim.qvd (qvd);
+DROP Table Sapakim;
+EndIf
+//-------------------------------- 
+
+If vFullLoadTime = 'Yes' or IsNull(QvdCreateTime('$(vQvdPath)\$(vCompany)_Ovdim.qvd')) then
+Ovdim:
+select 
+	ovd.mspr_krtis, 
+ 	ovd.tor,
+    res.mspr_krtis as kod_reshet ,
+    res.tor as reshet,
+    ovd.sttos_pil,
+    ovd.ishov,
+    ovd.tarikh_lida,
+    ovd.mshtmsh,
+    ovd.ktobt,
+    ovd.mikod,
+    ovd.msbit,
+    ovd.tlponim,
+    ovd.pks,
+    ovd.ish_kshrshm_mkotsr,
+    ovd.mskrtst_anchsh,
+    ovd.achoz_nikoi,
+    ovd.osch_morshatzotchsh,
+    ovd.isok,
+    ovd.aarot,
+    ovd.tarikh_adkon,
+    ovd.chodsh_oiom_lida,
+    ovd.tlpon_slolri,
+    ovd.tlponim_2,
+    ams.ktobt_alktronit,
+    ovd.client_emp,
+    ovd.tarikh_pticha,
+    ovd.mchiron,
+    hann.tor as shiuc_hanut,
+    hann.mspr_krtis as chnot_999999la_pil
+from
+ 	krtisim ovd
+    left join amshkh_lkrtisim ams
+		on ams.mspr_krtis=ovd.mspr_krtis
+       and ams.kbosta_krtisim=4
+    left outer join krtisim res
+		on res.kbotsa=20
+		and ovd.chain_number = res.mspr_krtis
+		left outer join krtisim hann
+		on hann.kbotsa=3
+		and ovd.chnot_999999la_pil = hann.mspr_krtis
+where 
+	ovd.kbotsa = 4
+;
+Store Ovdim into $(vQvdPath)\$(vCompany)_Ovdim.qvd (qvd);
+Drop Table Ovdim;
+EndIf
+
+//-------------------------------- 
+
+If vFullLoadTime = 'Yes' or IsNull(QvdCreateTime('$(vQvdPath)\$(vCompany)_hagim.qvd')) then
+hagim:
+select
+	tarikh,
+	day_desc,
+    tor_chg
+from
+	loach_shna_rtsif
+  left join tblt_sogi_chgim
+  		on sog_chg=kod_chg
+  		
+  		where tarikh >= $(vLoadFrom)
+	and tarikh <= $(vToday)
+ ;
+STORE hagim into $(vQvdPath)\$(vCompany)_hagim.qvd (qvd);
+Drop Table hagim;
+EndIf
+
+//---------------------------לקוחות נוטשים
+
+If vFullLoadTime = 'Yes' or IsNull(QvdCreateTime('$(vQvdPath)\$(vCompany)_lekohot_notshim.qvd')) then
+lekohot_notshim1:
+select 
+	ms.lkoach as mspr_lakoh,
+	max(ms.tarikh_asmkta) as date_acaron
+from msmkim ms
+group by 
+	ms.lkoach
+;
+
+noconcatenate
+
+ lekohot_notshim2:
+select 
+	sum(ms.sach_koll_mam) as skom_knia_aharon_llakoh,
+	ms.lkoach as mspr_lakoh,
+    ms.tarikh_asmkta as date_acaron
+from msmkim ms
+group by 
+	ms.tarikh_asmkta,ms.lkoach;
+
+noconcatenate
+
+lekohot_notshim:
+load
+*
+resident
+lekohot_notshim1;
+	inner join 
+	load
+	* 
+	resident lekohot_notshim2;
+STORE lekohot_notshim into $(vQvdPath)\$(vCompany)_lekohot_notshim.qvd (qvd);
+Drop Table lekohot_notshim;
+Drop Table lekohot_notshim1,lekohot_notshim2;
+
+EndIf
+
+If vFullLoadTime = 'Yes' or IsNull(QvdCreateTime('$(vQvdPath)\$(vCompany)_Takbulim.qvd')) then
+	Set vFullLoad = 'Yes';
+Else	
+	Set vFullLoad = 'No';
+EndIf
+
+Takbulim:
+select
+	substr( kbl.tarikh,1,4) || '~' || kbl.chnot || '~' || shu.mspr_kbla as mismach_key2, 
+	shu.mspr_tnoaa,
+    kbl.skom_bchshboniot,
+    kbl.sach_tkbolim,
+    kbl.mzomn,
+    kbl.odf,
+    kbl.shkim,
+    kbl.ashri,
+    kbl.shobri_zikoi,
+    kbl.tloshi_ancha,
+    kbl.zikoi_shotsa,
+    shu.mspr_ishor,
+    shu.asmkta,
+    shu.tarikh_apkda,
+    shu.mspr_rshima,
+    shu.wallet_code,
+    shu.operation_id,
+    kbl.tarikh,
+    kbl.kopi,
+    shu.mspr_shch_krtis_ashri,
+    kbl.mokr,
+    kbl.lkoach,
+    shu.opkd_bshobr,
+    shu.tarikh_rishom,
+    shu.tarikh_tshlom,
+    ts.tor_krtis as kod_solek,
+    tc.tor_krtis as  manpik,
+    kbl.mspr_doach_z,
+    kbl.chnot as kod_kupa,
+    kbl.chnot as kod_hanut,
+    kbl.chnot || '~' || kbl.mspr_doach_z as mezhe_doach_z,
+    shu.skom,
+    shu.n_mtba,
+     shu.rate,
+    shu.snif,
+    shu.credit_card_name_abs,
+    shu.sog_tshlom,
+    sog.sog,
+    sog.kod,
+    shu.mspr_kbla,
+    shu.bnk,
+    bank.tor_bnk,
+    shu.payment_method_group,
+    pay.group_desc,
+    so.tor_ashri,
+    so.sog_ashri as mspar_ashri,
+    ts.sog_krtis_ashri as num_kod_solek,
+    tc.sog_krtis_ashri as num_kod_manpik,
+    shu.mspr_tshlomim,
+    mtb.simol_mtba,
+    mtb.shm_mtba,
+    shv.mspar_sapak,
+    shv.mspar_masof,
+    pay.group_no 
+from 
+	kblot kbl
+   	inner join shorot_kbla shu
+   	 	on kbl.chnot=shu.mspr_chnot
+   	 	and kbl.mspr_kbla=shu.mspr_kbla
+    left outer join krtisim kup
+     	on kbl.chnot = kup.mspr_krtis
+        and kup.kbotsa = 3
+    left join sogi_krtisi_ashri ts
+   	 	on ts.sog_krtis_ashri=substr(mspr_chshbon_bnch_ashri,9,1)
+    left join sogi_krtisi_ashri tc
+         on tc.sog_krtis_ashri=shu.sog_krtis_ashri
+    left join payment_methods_groups pay
+   	   	 on pay.group_no=shu.payment_method_group
+    left join sogi_tshlom sog
+   		 on sog.kod=shu.sog_tshlom 
+    left join sogi_ashri so
+  		on so.sog_krtis=shu.sog_krtis_ashri
+    	and so.sog_ashri=shu.sog_ashri
+    left join bnkim bank
+   	    on shu.bnk=bank.kod_bnk
+    left join tblt_sharim_omtbot mtb
+        on shu.n_mtba=mtb.kod_mtba
+    left join  masofim_ve_shovarim shv
+     	on shu.mspr_chnot=shv.mspar_chnot 
+     	and shu.mspr_kbla=shv.mspar_kabala 
+        and case when length(shu.mspr_rshima)=2 then  to_number(shu.mspr_rshima,'999')   else -1 end = shv.mspar_reshima_ashrait
+		and case when length(shu.mspr_tnoaa)=3 then  to_number(shu.mspr_tnoaa,'999')   else -1 end = shv.mspar_tnoa_ashrait
+where
+	((kbl.tarikh >= $(vLoadFrom) and '$(vFullLoad)' = 'Yes') 
+    	or (kbl.tarikh >= $(vIncrementalFromDate) and '$(vFullLoad)' = 'No'))
+    and kbl.tarikh<=$(vToday);
+    
+If '$(vFullLoad)' = 'No' then
+	Concatenate (Takbulim)
+	Load * from $(vQvdPath)\$(vCompany)_Takbulim.qvd (qvd)
+    Where TARIKH < $(vIncrementalFromDate);
+EndIf
+
+store Takbulim into $(vQvdPath)\$(vCompany)_Takbulim.qvd (qvd); 
+drop table Takbulim;
+
+//---------------------------
+
+RIKOZ_KOPA:
+select 
+	chnot,
+    mspr,
+    ptichatarikh,
+    ptichashaa,
+    mspar_kupa_terminal,
+    sgiratarikh,
+    sgirashaa
+from 
+	rikoz_kopa_iomi
+WHERE
+	ptichatarikh >= $(vLoadFrom)
+	and sgiratarikh<=$(vToday);
+STORE RIKOZ_KOPA into $(vQvdPath)\$(vCompany)_RIKOZ_KOPA.qvd (qvd); 
+DROP Table RIKOZ_KOPA;
+
+//----------------
+
+If vFullLoadTime = 'Yes' or IsNull(QvdCreateTime('$(vQvdPath)\$(vCompany)_Mechirot.qvd')) then
+	Set vFullLoad = 'Yes';
+Else	
+	Set vFullLoad = 'No';
+EndIf
+
+
+Mechirot:
+ Load 
+ *,
+ text(kod_prit2) AS KOD_PRIT,
+ text(mptach_dgm2) as MPTACH_DGM;
+
+select
+	substr(mis.tarikh_rishom,1,4) || '~' || mis.chnot || '~' || mis.mspr_msmkh as mismach_key, 
+    substr(mis.tarikh_rishom,1,4) || '~' || mis.chnot || '~' || mis.msprkbla as mismach_key2, 
+	mis.mspr_msmkh,
+    mis.currency_code,
+	mis.msprkbla,
+    mis.sach_koll_mam,
+    mis.shora_achrona,
+	mis.tarikh_rishom,
+ 	mis.shat_adpsa,
+ 	mis.sach_lpni_ancha,
+	mis.achoz_ancha,
+	mis.skom_ancha,
+	mis.chnot as kod_kupa,
+    kup.mspr_krtis as kod_hanut,
+ 	mis.lkoach,
+ 	mis.kopi,
+ 	case '$(vShiuchOver)' when 'כמוכרן ברמת עסקה' then mis.mokr else shu.mokr end as kod_oved,
+ 	moc.tor as mocher,
+    shu.kod_prit as "kod_prit2",
+	shu.kmot_pritim,
+ 	shu.ancha_lshora,
+	shu.kod_mbtsa,
+ 	shu.mchir_lichida___mam,
+	shu.sac_lshora_mshokll,
+	shu.sac_lshora_mshokll as kmechirot_kolel_mam,
+ 	(shu.sac_lshora_mshokll /(1+(shu.mam_lprit_bat_amkira/100))) as mechirot_lo_kolel_mam,
+	case '$(vOfenHishuvAlut)' when 'מסמך המכירה' then shu.mchir_alot_lichida when 'כרטסת פריט' then pr.alot_lichida end as alot_leyehida,
+	shu.mam_lprit_bat_amkira,
+	shu.sach_lshora__mam,
+ 	shu.mchir_alot_lichida,
+ 	pr.kod_prit as parit,
+ 	pr.alot_lichida,
+ 	pr.mchir_1,
+ 	pr.mchir_2,
+ 	pr.mchir_3,
+ 	pr.mchir_4,
+ 	pr.mchir_5,
+ 	pr.mchir_6,
+    pr.mkpil_mam_llkoach,
+ 	gl.global_sale_list,
+    shu.srgl_midot,
+ 	lak.kod_tni_tshlom,
+    pr.mptach_dgm as "mptach_dgm2" ,
+    mtb.simol_mtba,
+    mtb.shm_mtba,
+shu.mspr_shora
+from
+	shorot_msmkim shu
+	inner join msmkim mis
+		on substr(mis.tarikh_rishom,1,4) = substr(shu.tarikh,1,4) 
+		and mis.chnot = shu.chnot
+		and mis.mspr_msmkh = shu.mspr_msmkh
+ 	left join amshkh_msmkim gl 
+ 		on gl.mspr_msmkh = mis.mspr_msmkh  
+ 		and gl.chnot = mis.chnot  
+ 		and gl.sog__msmkh =mis.sog_msmkh
+    left join tblt_sharim_omtbot mtb
+        on mis.currency_code=mtb.kod_mtba    
+ 	left join pritim pr
+		on pr.kod_prit=shu.kod_prit		//connect pritim table for alot_lichida field
+ 	left outer join krtisim kup
+ 		on mis.chnot = kup.mspr_krtis
+ 		and kup.kbotsa = 3
+ 	left outer join krtisim moc
+		on mis.lkoach = moc.mspr_krtis 
+		and moc.kbotsa = 4 
+	left outer join krtisim lak
+		on lak.mspr_krtis = mis.lkoach 
+		and lak.kbotsa =1      
+where 
+	mis.sog_msmkh=1
+ 	and mis.odps = 1
+ 	and shu.sog_msmkh=1
+    and((mis.tarikh_rishom >= $(vLoadFrom) and '$(vFullLoad)' = 'Yes') 
+    	or (mis.tarikh_rishom >= $(vIncrementalFromDate) and '$(vFullLoad)' = 'No'))
+ 	and mis.tarikh_rishom <=$(vToday)
+    and((shu.tarikh >= $(vLoadFrom) and '$(vFullLoad)' = 'Yes') 
+    	or (shu.tarikh >= $(vIncrementalFromDate) and '$(vFullLoad)' = 'No'))
+ 	and shu.tarikh <= $(vToday);
+    
+If '$(vFullLoad)' = 'No' then
+	Concatenate (Mechirot)
+	Load * from $(vQvdPath)\$(vCompany)_Mechirot.qvd (qvd)
+    Where TARIKH_RISHOM < $(vIncrementalFromDate);
+EndIf    
+    
+    
+STORE Mechirot into $(vQvdPath)\$(vCompany)_Mechirot.qvd (qvd); 
+DROP Table Mechirot;
+
+//---------------------------
+
+If vFullLoadTime = 'Yes' or IsNull(QvdCreateTime('$(vQvdPath)\$(vCompany)_Mivzta.qvd')) then
+Mivzta:
+select 
+	mzaa_mbtsa,
+	tor_mbtsa
+from 
+ 	tblt_mbtsim
+;
+STORE Mivzta into $(vQvdPath)\$(vCompany)_Mivzta.qvd (qvd);
+DROP Table Mivzta;
+EndIf
+//-----------------------
+
+If vFullLoadTime = 'Yes' or IsNull(QvdCreateTime('$(vQvdPath)\$(vCompany)_Yeadim.qvd')) then
+Yeadim:
+select
+	tarikh,
+ 	mspr_chnot,
+	tchzit,
+	tachazit_pritim,
+	add_mount,
+	add_items_sty,
+	forcast_cust_recrew,
+    cust_count
+    
+from 
+	pdion_chnoiot
+WHERE
+	tarikh >= $(vLoadFrom)
+;
+STORE Yeadim into $(vQvdPath)\$(vCompany)_Yeadim.qvd (qvd); 
+Drop Table Yeadim;
+EndIf
+//----------------------מימוש זיכוי
+
+If vFullLoadTime = 'Yes' or IsNull(QvdCreateTime('$(vQvdPath)\$(vCompany)_Zikuim.qvd')) then
+	Set vFullLoad = 'Yes';
+Else	
+	Set vFullLoad = 'No';
+EndIf
+
+Zikuim:
+select 
+	substr(tarikh,1,4) || '~' || chnotasmkta_otsaa || '~' || msprchn as mismach_key, 
+	chnotasmkta_otsaa,
+ 	msprchn,
+ 	tarikh,
+ 	skom,
+ 	npda,
+ 	bchnot,
+ 	i_mspr_chn,
+ 	btarikh,
+ 	tarikhadkon,
+ 	eich_nifda,
+ 	cust_no,
+ 	item_code 
+from 
+	kobts_chn_zikoi
+Where
+	((tarikh >= $(vLoadFrom) and '$(vFullLoad)' = 'Yes') 
+    	or (tarikh >= $(vIncrementalFromDate) and '$(vFullLoad)' = 'No'))
+ 	and tarikh<=$(vToday);
+    
+If '$(vFullLoad)' = 'No' then
+	Concatenate (Zikuim)
+	Load * from $(vQvdPath)\$(vCompany)_Zikuim.qvd (qvd)
+    Where TARIKH < $(vIncrementalFromDate);
+EndIf   
+    
+STORE Zikuim into $(vQvdPath)\$(vCompany)_Zikuim.qvd (qvd); 
+DROP Table Zikuim;
+
+//-----------------------
+If vFullLoadTime = 'Yes' or IsNull(QvdCreateTime('$(vQvdPath)\$(vCompany)_Dochot_z.qvd')) then
+	Set vFullLoad = 'Yes';
+Else	
+	Set vFullLoad = 'No';
+EndIf
+
+Dochot_z:
+select 
+	chnot || '~' || mspr as mezhe_doach_z,
+	mspr chnot,
+	ptichatarikh,
+	ptichashaa,
+	sgiratarikh,
+	sgirashaa
+from 
+	rikoz_kopa_iomi
+Where
+	((ptichatarikh >= $(vLoadFrom) and '$(vFullLoad)' = 'Yes') 
+    	or (ptichatarikh >= $(vIncrementalFromDate) and '$(vFullLoad)' = 'No'))
+ 	and ptichatarikh<=$(vToday);
+ 
+If '$(vFullLoad)' = 'No' then
+	Concatenate (Dochot_z)
+	Load * from $(vQvdPath)\$(vCompany)_Dochot_z.qvd (qvd)
+    Where PTICHATARIKH < $(vIncrementalFromDate);
+EndIf
+ 
+STORE Dochot_z into $(vQvdPath)\$(vCompany)_Dochot_z.qvd (qvd); 
+DROP Table Dochot_z;
+
+//-----------------------מלאי נוכחי בלבד
+
+Mlay:
+Load 
+*,
+text(kod_prit2) AS KOD_PRIT;
+
+select 
+ 	mspr_krtis,
+ 	kod_prit as "kod_prit2", 
+ 	sum(itrt_mli) as itrt_mli
+from 
+	mli
+where 
+	kbotst_krtisim = 3   
+group by
+	mspr_krtis,
+ 	kod_prit
+having 
+	sum(itrt_mli)<>0
+;
+STORE Mlay into $(vQvdPath)\$(vCompany)_Mlay.qvd (qvd);
+DROP Table Mlay;
+
+//------------------------------מלאי כללי לפי פריט
+Ramat_Mlay:
+Load 
+*,
+text(kod_prit2) AS KOD_PRIT;
+ 
+select 
+ 	kod_prit as "kod_prit2", 
+ 	sum(itrt_mli) as itrt_mli
+from 
+	mli
+where 
+	kbotst_krtisim = 3
+group by
+ 	kod_prit
+;
+STORE Ramat_Mlay into $(vQvdPath)\$(vCompany)_Ramat_Mlay.qvd (qvd);
+DROP Table Ramat_Mlay;
+
+//---------------------------
+If vFullLoadTime = 'Yes' or IsNull(QvdCreateTime('$(vQvdPath)\$(vCompany)_tnoot_mli_for_mli_letarik.qvd')) then
+tnoot_mli_for_mli_letarik:
+Load 
+*,
+text(kod_prit2) AS KOD_PRIT;
+ 
+select 
+ 	kod_prit as "kod_prit2",  
+	tarikh_tnoaa,
+	krtis_ngdi__2,
+    	shaa_tnoaa AS shat_tnua,	
+	kmot,
+	knisitsiaa as sog_tnoaa,
+	sach_skom_bshort_toda,
+	tor,
+    	kod,
+	asmkta_1,
+	krtis_1,
+	mchir_alot_0_lprit,
+	kod_tnoaa_lpi_tbla
+from 
+	tnoot_mli
+	left join kodi_tnoot_mli
+		on kod_tnoaa_lpi_tbla=kod
+where
+	tarikh_tnoaa >= $(vLoadFrom_mli)
+	and tarikh_tnoaa<=$(vToday)
+	and kbotsa_1=3
+;
+STORE tnoot_mli_for_mli_letarik into $(vQvdPath)\$(vCompany)_tnoot_mli_for_mli_letarik.qvd (qvd); 
+Drop Table tnoot_mli_for_mli_letarik;
+EndIf
+//-----------------------
+
+tnoot_mli:
+Load 
+*,
+text(kod_prit2) AS KOD_PRIT;
+ 
+select 
+ 	kod_prit as "kod_prit2",  
+	min(tarikh_tnoaa) as taric_knisa_rishon,
+	max(tarikh_tnoaa) as taric_knisa_aharon,
+	krtis_ngdi__2 as chnot
+from 
+	tnoot_mli 
+where 
+	knisitsiaa='כ' and kbotsa_1=3
+	and tarikh_tnoaa>=$(vLoadFrom)
+	and tarikh_tnoaa<=$(vToday)
+group by 
+	kod_prit,krtis_ngdi__2
+;
+STORE tnoot_mli into $(vQvdPath)\$(vCompany)_tnoot_mli.qvd (qvd); 
+DROP Table tnoot_mli;
+
+//-----------------------
+
+mli_optimli:
+Load 
+*,
+text(kod_prit2) AS KOD_PRIT;
+ 
+select 
+ 	kod_prit as "kod_prit2",  
+	krtis as cnot,
+	mli_minimom,
+	mli_mksimom,
+	mli_optimli,
+    pr_1_dgm_2srg
+from 
+	mli_minimom_lmchsn
+where
+   pr_1_dgm_2srg='0';
+    
+STORE mli_optimli into $(vQvdPath)\$(vCompany)_mli_optimli.qvd (qvd); 
+DROP Table mli_optimli;
+
+//-----------------------
+
+mli_baderech:
+Load 
+*,
+text(kod_prit2) AS KOD_PRIT;
+ 
+select 
+ 	shu.kod_prit as "kod_prit2",  
+	shu.chnot,
+	shu.kmot_pritim-shu.kmot_sopk as mli_bderech 
+from
+	shorot_msmkim shu
+	inner join msmkim mis
+		on substr(mis.tarikh_rishom,1,4) = substr(shu.tarikh,1,4) 
+		and mis.chnot = shu.chnot
+		and mis.mspr_msmkh = shu.mspr_msmkh 
+where
+	mis.odps=1
+	and mis.chn_sholmaz_lchn=0
+	and mis.sog_msmkh=13
+;
+STORE mli_baderech into $(vQvdPath)\$(vCompany)_mli_baderech.qvd (qvd); 
+DROP Table mli_baderech;
+
+//-----------------------
+
+mli_meshurian:
+Load 
+*,
+text(kod_prit2) AS KOD_PRIT;
+ 
+select 
+ 	shu.kod_prit as "kod_prit2",   
+	shu.chnot,
+	shu.kmot_pritim-shu.kmot_sopk as mli_meshurian 
+from
+	shorot_msmkim shu
+	inner join msmkim mis
+		on substr(mis.tarikh_rishom,1,4) = substr(shu.tarikh,1,4) 
+		and mis.chnot = shu.chnot
+		and mis.mspr_msmkh = shu.mspr_msmkh 
+where
+ 	mis.odps=1
+	and mis.chn_sholmaz_lchn=0
+	and mis.sog_msmkh=3
+;
+STORE mli_meshurian into $(vQvdPath)\$(vCompany)_mli_meshurian.qvd (qvd); 
+DROP Table mli_meshurian;
+
+//-----------------------
+If vFullLoadTime = 'Yes' or IsNull(QvdCreateTime('$(vQvdPath)\$(vCompany)_Mevakrim.qvd')) then
+	Set vFullLoad = 'Yes';
+Else	
+	Set vFullLoad = 'No';
+EndIf
+
+Mevakrim:
+select 
+	store_no,
+	count_date,
+	customers_num,
+    count_time
+from
+	Customers_Count
+Where
+    ((count_date >= $(vLoadFrom) and '$(vFullLoad)' = 'Yes') 
+    	or (count_date >= $(vIncrementalFromDate) and '$(vFullLoad)' = 'No'))
+	and count_date <= $(vToday)
+;
+
+If '$(vFullLoad)' = 'No' then
+	Concatenate (Mevakrim)
+	Load * from $(vQvdPath)\$(vCompany)_Mevakrim.qvd (qvd)
+    Where COUNT_DATE < $(vIncrementalFromDate);
+EndIf
+
+STORE Mevakrim into $(vQvdPath)\$(vCompany)_Mevakrim.qvd (qvd);
+DROP Table Mevakrim;
+
+//--------------------------------
+
+If vFullLoadTime = 'Yes' or IsNull(QvdCreateTime('$(vQvdPath)\$(vCompany)_Nohehut.qvd')) then
+	Set vFullLoad = 'Yes';
+Else	
+	Set vFullLoad = 'No';
+EndIf
+
+Nohehut:
+select 
+ 	tarikh, 
+ 	(tarikh * 86400) + shaa as seconds,
+ 	shaa,
+ 	chnot,
+ 	mspr_krtis,
+	sog_tnoaa as sog_tnua,
+ 	case when instr(sog_tnoaa,1)=0 then 'out' else 'in' end as sog_tnoaa
+from 
+	nokchot_obdim
+where
+	((tarikh >= $(vLoadFrom) and '$(vFullLoad)' = 'Yes') 
+    	or (tarikh >= $(vIncrementalFromDate) and '$(vFullLoad)' = 'No'))
+   and tarikh <= $(vToday)
+;
+
+If '$(vFullLoad)' = 'No' then
+	Concatenate (Nohehut)
+	Load * from $(vQvdPath)\$(vCompany)_Nohehut.qvd (qvd)
+    Where TARIKH < $(vIncrementalFromDate);
+EndIf
+
+STORE Nohehut into $(vQvdPath)\$(vCompany)_Nohehut.qvd (qvd);
+DROP Table Nohehut;
+
+//---------------------------
+If vFullLoadTime = 'Yes' or IsNull(QvdCreateTime('$(vQvdPath)\$(vCompany)_Eruim.qvd')) then
+	Set vFullLoad = 'Yes';
+Else	
+	Set vFullLoad = 'No';
+EndIf
+
+Eruim:
+select 
+ 	evn.event_date,
+	floor(evn.event_hour/3600) as event_hour,
+    (evn.event_hour/3600) as event_hour_all,
+ 	evn.supervisor_present,
+ 	evn.ref,
+ 	evn.store_number,
+ 	evn.cashier_number,
+ 	etp.event_desc,
+    evn.event_code,
+	count(evn.event_date) as events
+from 
+	event_log evn
+ 	left outer join event_types etp
+ 		on evn.event_code = etp.event_code
+where 
+	((evn.event_date >= $(vLoadFrom) and '$(vFullLoad)' = 'Yes') 
+    	or (evn.event_date >= $(vIncrementalFromDate) and '$(vFullLoad)' = 'No'))
+	and event_date <= $(vToday)
+group by 
+	evn.event_code,
+ 	evn.event_date,
+ 	floor(evn.event_hour/3600),
+    (evn.event_hour/3600),
+ 	evn.supervisor_present,
+ 	evn.ref,
+ 	evn.store_number,
+ 	evn.cashier_number, 
+ 	etp.event_desc
+;
+
+If '$(vFullLoad)' = 'No' then
+	Concatenate (Eruim)
+	Load * from $(vQvdPath)\$(vCompany)_Eruim.qvd (qvd)
+    Where EVENT_DATE < $(vIncrementalFromDate);
+EndIf
+
+STORE Eruim into $(vQvdPath)\$(vCompany)_Eruim.qvd (qvd);
+DROP Table Eruim;
+
+
+NoConcatenate
+Nohehut_Temp1:
+Load
+    TARIKH, 
+	SECONDS,
+    If(SHAA<3600,(24 * 3600) + SHAA, SHAA) as SHAA,
+  	CHNOT,
+  	MSPR_KRTIS,
+    SOG_TNUA,
+ 	SOG_TNOAA
+FROM 
+	[$(vQvdPath)\$(vCompany)_Nohehut.qvd] (qvd);
+
+//---------------------------
+
+For vHour = 1 to 24
+Let vHours = $(vHour);
+
+shot_nohehut:
+Load
+     Date(Date#(Previous(TARIKH),'YYYYMMDD'),'DD/MM/YYYY') as 'תאריך',
+     CHNOT as 'קוד חנות',
+     MSPR_KRTIS as 'קוד עובד',
+     MSPR_KRTIS as 'קופאי',
+     if(isnull(MSPR_KRTIS),0,MSPR_KRTIS) as 'קוד מוכרן',
+
+     //MSPR_KRTIS as 'קוד מוכרן',
+     if('$(vHour)'=24,0,'$(vHour)') as 'שעה',
+     'current:'&(SHAA/3600) &(TARIKH)& '~previous:' & Previous(SHAA/3600)&Previous(TARIKH) as test,
+      'current:'&(SHAA/3600) & '~previous:' & Previous(SHAA/3600) as test3,
+      NUM(SHAA/3600) as  current_hour,
+      Previous(NUM(SHAA/3600)) as previous_hour,
+     if((Previous(NUM(SHAA/3600))- NUM(SHAA/3600))>0 AND TARIKH=Previous(TARIKH)+1,
+      	(
+    		If(NUM(SHAA/3600)<'$(vHour)' AND (Previous(NUM(SHAA)/3600))>='$(vHour)' and  (Previous(NUM(SHAA)/3600))>'$(vHour)'+1  ,0,
+    			If(Previous(NUM(SHAA/3600))>'$(vHour)' AND (Previous(NUM(SHAA)/3600))<'$(vHour)'+1 ,(fabs(1- (Previous(num((SHAA/3600)))-Previous(floor((SHAA/3600)))))*60),
+     				If(NUM(SHAA/3600)>'$(vHour)' AND (NUM(SHAA/3600))<'$(vHour)'+1 ,((num((SHAA/3600))-floor((SHAA/3600))))*60,60)))
+    	)
+    ,
+    	(
+     
+    		If((NUM(SHAA/3600)<'$(vHour)' AND (Previous(NUM(SHAA)/3600))<'$(vHour)') 
+            or 
+    		(NUM(SHAA/3600)>'$(vHour)' AND (Previous(NUM(SHAA)/3600))>'$(vHour)'and (Previous(NUM(SHAA)/3600))>'$(vHour)'+1)
+   			or
+            (NUM(SHAA/3600)='$(vHour)')
+            ,0,
+    			If(Previous(NUM(SHAA/3600))>'$(vHour)' AND (NUM(SHAA/3600))<'$(vHour)'+1 ,(((SHAA/3600))-Previous((SHAA/3600)))*60,
+    				If(Previous(NUM(SHAA/3600))>'$(vHour)' AND (Previous(NUM(SHAA)/3600))<'$(vHour)'+1 ,( fabs(1-(Previous(num((SHAA/3600)))-Previous(floor((SHAA/3600)))))*60),
+     					If(NUM(SHAA/3600)>'$(vHour)' AND (NUM(SHAA/3600))<'$(vHour)'+1 ,((num((SHAA/3600))-floor((SHAA/3600))))*60,
+   						  if(((Previous(NUM(SHAA)/3600))='$(vHour)'+1) 
+                          ,0,
+                          60)
+                          )
+                        )
+                    )
+                )
+           )
+    
+       )/60  as 'שעות לחישוב' 
+       
+
+Resident
+ 	Nohehut_Temp1
+where
+	MSPR_KRTIS = Previous(MSPR_KRTIS) 
+ 	and CHNOT = Previous(CHNOT)
+    and SOG_TNOAA ='out' 
+    and Previous(SOG_TNOAA)='in'
+Order By
+	MSPR_KRTIS,
+ 	CHNOT,
+ 	SECONDS
+ ;
+Next  vHour ; 
+Drop Table Nohehut_Temp1;
+
+NoConcatenate
+/////-----------------טעינת נתוני שעות נוכחות היום
+
+nohechut_today:
+select 
+	tarikh, 
+ 	(tarikh * 86400) + shaa as seconds,
+ 	shaa,
+ 	chnot,
+ 	mspr_krtis,
+	sog_tnoaa as sog_tnua,
+ 	case when instr(sog_tnoaa,1)=0 then 'out' else 'in' end as sog_tnoaa
+from 
+	nokchot_obdim
+where
+  tarikh = $(vToday);
+  
+/////------------------הפרדת עובדים שנכנסו ויצאו ,השארת אלה שרק נכנסו ללא יציאה
+
+NoConcatenate
+
+shot_noheut_today_temp:
+Load
+	MSPR_KRTIS, 
+	max(SHAA) as SHAA,
+ 	CHNOT
+Resident
+ 	nohechut_today
+Group By 
+ 	MSPR_KRTIS,
+ 	CHNOT
+ ;
+
+NoConcatenate
+ 
+shot_noheut_today:
+Load
+	MSPR_KRTIS,
+	SHAA,
+	CHNOT
+Resident
+	shot_noheut_today_temp
+;
+	left Join
+		Load
+            CHNOT,
+            SHAA,
+            MSPR_KRTIS,
+            TARIKH,
+            SOG_TNOAA
+	    Resident
+			nohechut_today;
+Drop Tables shot_noheut_today_temp,nohechut_today,nohechut_today;
+
+///////---------------------חישוב שעות נוכחות
+
+For vHour = 1 to 24
+Let vHours = $(vHour);
+
+nohehot_today_final:
+Load
+     Date(Date#((TARIKH),'YYYYMMDD'),'DD/MM/YYYY') as 'תאריך',
+       'current:'&(SHAA/3600) &(TARIKH)& '~previous:' & Previous(SHAA/3600)&Previous(TARIKH) as test,
+      'current:'&(SHAA/3600) & '~previous:' & Previous(SHAA/3600) as test3,
+      NUM(SHAA/3600) as  previous_hour,
+      //Previous(NUM(SHAA/3600)) as previous_hour,
+     CHNOT as 'קוד חנות',
+     MSPR_KRTIS as 'קוד עובד',
+     MSPR_KRTIS as 'קופאי',
+     if(isnull(MSPR_KRTIS),0,MSPR_KRTIS) as 'קוד מוכרן',
+     SHAA AS 'שעת כניסה',
+     SOG_TNOAA as 'סוג תנועה',
+    if('$(vHour)'=24,0,'$(vHour)') as 'שעה',
+    If((hour(Time(Now()))<'$(vHour)' AND ((NUM(SHAA)/3600))<'$(vHour)')
+    or 
+    (hour(Time(Now()))>'$(vHour)' AND ((NUM(SHAA)/3600))>'$(vHour)'and ((NUM(SHAA)/3600))>'$(vHour)'+1)
+    or(hour(Time(Now()))='$(vHour)' and Minute(Time(Now()))=0),0,
+    If((NUM(SHAA)/3600)>'$(vHour)' AND (Time(Now()))<'$(vHour)'+1 ,(Minute((Time(Now())))-((SHAA/3600)))*60,
+    If((NUM(SHAA)/3600)>'$(vHour)' AND ((NUM(SHAA)/3600))<'$(vHour)'+1 ,( fabs(1-((num((SHAA/3600)))-(floor((SHAA/3600)))))*60),
+     If((hour(Time(Now()))+Minute(Time(Now()))/60)>'$(vHour)' AND ((hour(Time(Now()))+Minute(Time(Now()))/60))<'$(vHour)'+1,Minute(Time(Now())),
+     if((((NUM(SHAA)/3600))='$(vHour)'+1) ,0,
+    60)))))/60  as 'שעות לחישוב'
+Resident
+	shot_noheut_today
+WHERE 
+	SOG_TNOAA='in';
+    
+Next  vHour ; 
+Drop Table shot_noheut_today;
+
+
+If vFullLoadTime = 'Yes' or IsNull(QvdCreateTime('$(vQvdPath)\$(vCompany)_MLI_LETARICH.qvd')) then
+NoConcatenate
+MLI_LETARICH_TEMP1:
+LOAD * 
+FROM 
+	[$(vQvdPath)\$(vCompany)_tnoot_mli_for_mli_letarik.qvd] (qvd);
+ ;
+NoConcatenate
+
+MLI_LETARICH_TEMP:
+LOAD
+	*
+Resident
+	MLI_LETARICH_TEMP1
+ORDER BY 
+	KRTIS_1,
+    KOD_PRIT, 
+    TARIKH_TNOAA,
+    SHAT_TNUA
+    ;
+drop Table MLI_LETARICH_TEMP1;
+    
+NoConcatenate
+
+MLI_LETARICH:
+LOAD
+	IF(
+	//////-------------------------------חישוב מלאי לפי פריט ותאריך כל עוד לא הייתה ספירת מלאי 
+        KOD_PRIT <> PREVIOUS(KOD_PRIT) OR ISNULL(PREVIOUS(KOD_PRIT)) OR TOR='ספירת מלאי' 
+        ,     IF(SOG_TNOAA=  'י',              
+            -1,1)  
+            * KMOT,
+            IF(SOG_TNOAA= 'כ', 1,  IF(SOG_TNOAA=  'י',              
+            -1)  
+            )
+            *KMOT
+ 	 + PEEK('KAMUT_MIZTABER')) AS 'KAMUT_MIZTABER',
+	 Date(Date#(TARIKH_TNOAA,'YYYYMMDD'),'DD/MM/YYYY') as 'תאריך תנועה',
+    
+	 TARIKH_TNOAA & '~' &num(SHAT_TNUA,'00000') & '~' & IF(
+     KOD_PRIT <> PREVIOUS(KOD_PRIT) OR ISNULL(PREVIOUS(KOD_PRIT)) OR TOR='ספירת מלאי'
+     ,KMOT,
+    // TOR='ספירת מלאי',KMOT,
+   	 IF(SOG_TNOAA='כ',
+	 1,
+     	IF(SOG_TNOAA='י',
+			-1)
+         )*KMOT + PEEK('KAMUT_MIZTABER')) as 'תאריך שעה וכמות מלאי',
+     SHAT_TNUA AS 'שעת התנועה',
+     '~' & KRTIS_NGDI__2 as 'חנות יעד',
+     KRTIS_1 as 'קוד חנות',
+     text(KOD_PRIT) as 'קוד פריט',
+     ASMKTA_1 AS 'אסמכתא',
+     KMOT as 'כמות התנועה',
+     IF(SOG_TNOAA='כ',
+     'כניסה',if(SOG_TNOAA='י',
+     'יציאה'))
+     AS 'כניסה/יציאה מהמלאי',
+     if(not Len(trim(KOD))>0,null(),KOD&' - '& if(not Len(trim(TOR))>0 , 'חסר תיאור', TOR)) AS 'סוג תנועת מלאי',
+     //KOD & '-' & TOR AS 'סוג תנועת מלאי',
+     KOD as 'קוד תנועת מלאי',
+     MCHIR_ALOT_0_LPRIT AS 'עלות בעת תנועה',
+SACH_SKOM_BSHORT_TODA as 'סכום בתנועה',
+         'מלאי לתאריך' as 'רשומה'
+Resident
+	MLI_LETARICH_TEMP;
+
+DROP TABLE MLI_LETARICH_TEMP;
+
+
+STORE MLI_LETARICH into $(vQvdPath)\$(vCompany)_MLI_LETARICH.qvd (qvd);
+DROP Table MLI_LETARICH;
+endif 
+
+
+///////////////////////////////////////////fact_table1
+//מניפולציה
+
+Table1Temp:
+LOAD MISMACH_KEY as 'מזהה מסמך',
+ 	KOD_KUPA&'-'&MSPRKBLA as 'מספר קבלה',
+ 	MSPR_MSMKH as 'מספר מסמך',
+ 	MSPR_MSMKH as 'מספר מסמך מכירות',
+    SACH_KOLL_MAM/SHORA_ACHRONA as 'סל קניה',
+ 	Date(Date#(TARIKH_RISHOM,'YYYYMMDD'),'DD/MM/YYYY') as 'תאריך',
+ 	if(isnull(KOD_KUPA),0,KOD_KUPA) as [קופה],
+ 	if(isnull(KOD_HANUT),0,KOD_HANUT)  as [קוד חנות],
+ 	if(isnull(LKOACH) OR not Len(trim(LKOACH))>0,'0',LKOACH) AS 'קוד לקוח',
+ 	if(isnull(KOD_OVED),0,KOD_OVED) as 'קוד מוכרן',
+    if(isnull(KOD_OVED),0,KOD_OVED) as 'קוד עובד',
+ 	if(isnull(KOPI),0,KOPI) AS 'קופאי',
+    Floor(SHAT_ADPSA/3600) as 'שעה',
+ 	if(isnull(text(KOD_PRIT)) OR not Len(trim(text(KOD_PRIT)))>0,'0',text(KOD_PRIT)) as 'קוד פריט',
+    ANCHA_LSHORA AS 'אחוז הנחה לשורה',
+	KMOT_PRITIM as 'כמות פריטים שנמכרו',
+    MCHIR_ALOT_LICHIDA AS 'עלות בעת תנועה',
+    KMECHIROT_KOLEL_MAM as 'מכירות כולל מעמ',
+    (SAC_LSHORA_MSHOKLL /if(MKPIL_MAM_LLKOACH=1000,1,(1+(MAM_LPRIT_BAT_AMKIRA/100)))) as 'מכירות ללא מעמ',
+	if(isnull(KOD_MBTSA),0,KOD_MBTSA) AS 'קוד מבצע',
+	if(isnull(GLOBAL_SALE_LIST),0,GLOBAL_SALE_LIST) as 'קוד מבצע ברמת מסמך',
+ 	SAC_LSHORA_MSHOKLL,
+    SAC_LSHORA_MSHOKLL AS 'מחיר משוקלל בשורה',
+ 	MAM_LPRIT_BAT_AMKIRA,
+    Num((  (MCHIR_LICHIDA___MAM * KMOT_PRITIM) - SAC_LSHORA_MSHOKLL ) ,'#,##0.00') as 'סכום הנחה כולל',
+  	ACHOZ_ANCHA as 'אחוז הנחה לבדיקה',
+  	Num((  (MCHIR_LICHIDA___MAM * KMOT_PRITIM) - SAC_LSHORA_MSHOKLL ),'#,##0.00') as 'הנחה לשורה',
+  	KMOT_PRITIM as 'עלות',
+ 	KMOT_PRITIM AS 'כמות פריטים לבדיקה',
+	'מכירות' as 'רשומה',
+    SRGL_MIDOT AS 'אחוז קרדיט',
+    CURRENCY_CODE&' - '& if(not Len(trim(SHM_MTBA))>0 , 'חסר תיאור', SIMOL_MTBA&'-'&SHM_MTBA)  as 'מטבע מסמך',
+MSPR_SHORA as [מספר שורה]
+	FROM [$(vQvdPath)\$(vCompany)_Mechirot.qvd](qvd);
+
+Concatenate
+Load
+    KOD_HANUT & '-' & if(MSPR_KBLA=0 ,null(),MSPR_KBLA) AS 'מספר קבלה',
+    Date(Date#(TARIKH_RISHOM,'YYYYMMDD'),'DD/MM/YYYY') as 'תאריך', 
+    if(isnull(KOD_KUPA),0,KOD_KUPA) as [קופה],
+ 	if(isnull(KOD_HANUT),0,KOD_HANUT)  as [קוד חנות],
+   N_MTBA&'-'&SIMOL_MTBA&'-'&SHM_MTBA as 'מטבע פקטיבי',
+    'מכירות פקדיביות לחשבוניות הקפה' as 'רשומה' 
+FROM 
+	[$(vQvdPath)\$(vCompany)_Takbulim.qvd](qvd)
+where not Exists 
+	([מספר קבלה],KOD_HANUT&'-'&MSPR_KBLA);
+
+Concatenate
+
+Load
+MISMACH_KEY as 'מזהה מסמך',
+CHNOTASMKTA_OTSAA&'-'&MSPRCHN as 'מספר קבלה',
+if(isnull(CHNOTASMKTA_OTSAA),0,CHNOTASMKTA_OTSAA) as [קופה],
+if(isnull(CHNOTASMKTA_OTSAA),0,CHNOTASMKTA_OTSAA)  as [קוד חנות],
+//CHNOTASMKTA_OTSAA& '~' & CHNOTASMKTA_OTSAA AS  'קופה וחנות',
+Date(Date#(TARIKH,'YYYYMMDD'),'DD/MM/YYYY') as 'תאריך',
+
+'זיכויים' as 'רשומה'
+FROM	
+[$(vQvdPath)\$(vCompany)_Zikuim.qvd](qvd);
+
+STORE Table1Temp into $(vQvdPath)\$(vCompany)_Table1Temp.qvd (qvd);
+Drop Table Table1Temp;
+
+
+Table1:
+LOAD distinct 
+AutoNumberHash256([תאריך],[קוד חנות],[קוד עובד],[קוד פריט],[שעה]) as Key1,
+    [מזהה מסמך],
+ [מספר קבלה],
+ 	[מספר מסמך],
+ 	[מספר מסמך מכירות],
+    [סל קניה],
+    [קופה],
+// 	[תאריך],
+// 	[קופה וחנות],
+ 	[קוד לקוח],
+ 	[קוד מוכרן],
+//    [קוד עובד],
+ 	[קופאי],
+//    [שעה],
+// 	[קוד פריט],
+    [אחוז הנחה לשורה],
+	[כמות פריטים שנמכרו],
+    [עלות בעת תנועה],
+    [מכירות כולל מעמ],
+    [מכירות ללא מעמ],
+	[קוד מבצע],
+	[קוד מבצע ברמת מסמך],
+ 	[מחיר משוקלל בשורה],
+ 	[סכום הנחה כולל],
+  	[אחוז הנחה לבדיקה],
+  	[הנחה לשורה],
+  	[עלות],
+ //	[כמות פריטים לבדיקה],
+	[רשומה],
+    [אחוז קרדיט],
+    [מטבע מסמך],
+[מספר שורה],
+if(תאריך= today() and שעה<= Hour(now()),1,0) as TodayFlag,
+if(תאריך= date(today()-7) and שעה<= Hour(now()),1,0) as TodayPrevFlag,
+if(((inweektodate(תאריך,today(), 0, -1) * -1)  and תאריך<Today()) or (תאריך=today() and שעה<= Hour(now())),1,0) as WeekFlag,
+if(((inweektodate(תאריך,today(), -1, -1) * -1)  and תאריך<Today()-7) or (תאריך=today()-7 and  שעה<= Hour(now())),1,0) as WeekPrevFlag,
+
+if((year(תאריך) = year(today()) and month(תאריך)=month(today()) and  תאריך <today()) or (תאריך =today() and שעה<= Hour(now())),1,0) as MonthFlag ,
+if((year(תאריך) = year(today())-1 and month(תאריך)=month(today()) and  תאריך <addyears(today(),-1)) or (תאריך =addyears(today(),-1)) and שעה<= Hour(now()),1,0) as MonthPrevFlag,
+
+if((year(תאריך) = year(today()) and DayNumberOfYear(תאריך)<=DayNumberOfYear(today()) and תאריך<Today() ) or (תאריך=today() and שעה<= Hour(now())),1,0) as YearFlag,
+if((year(תאריך) = year(today())-1 and DayNumberOfYear(תאריך)<=DayNumberOfYear(today()) and תאריך<addyears(Today() ,-1)) or (תאריך=addyears(Today() ,-1) and שעה<= Hour(now())),1,0) as YearPrevFlag
+
+from $(vQvdPath)\$(vCompany)_Table1Temp.qvd (qvd);
+
+///////////////////////////////////////////fact_table2
+
+//////////////////////////////////////////////////////////////אירועים, שעות נוכחות, נוכחות היום
+Table2Temp:
+LOAD
+	Date(Date#(EVENT_DATE,'YYYYMMDD'),'DD/MM/YYYY') as 'תאריך',
+    (EVENT_HOUR) as 'שעה',
+    Interval((EVENT_HOUR_ALL)/24,'hh:mm') AS 'שעת האירוע',
+ 	If(SUPERVISOR_PRESENT=0,'לא','כן') as 'מנהל נוכח',
+    EVENT_CODE&' - '& if(not Len(trim(EVENT_DESC))>0 , 'חסר תיאור', EVENT_DESC) AS 'סוג אירוע',
+ 	STORE_NUMBER as [קוד חנות],
+ //	CASHIER_NUMBER as 'קופאי',
+ 	CASHIER_NUMBER as 'קוד עובד',
+	REF as 'פרטי אירוע',
+ 	EVENTS as 'אירועים'//,
+ //   'אירועים' as 'רשומה'
+FROM 	[$(vQvdPath)\$(vCompany)_Eruim.qvd] (qvd);
+
+Concatenate (Table2Temp) 
+Load
+	 [תאריך],
+     [קוד חנות],
+    [קוד עובד],
+ //    [קופאי],
+ //    [קוד מוכרן],
+     [שעה],
+current_hour,
+previous_hour,
+    [שעות לחישוב]//, 
+//	'שעות נוכחות' as 'רשומה'
+   
+Resident
+	shot_nohehut;
+Drop Table shot_nohehut;
+//נוכחות היום 
+
+Concatenate (Table2Temp) 
+Load
+	[תאריך],
+    [קוד חנות],
+     [קוד עובד],
+//     [קופאי],
+//     [קוד מוכרן],
+     [שעת כניסה],
+     [סוג תנועה],
+    [שעה],
+    [שעות לחישוב]//, 
+// 	'שעות נוכחות היום' as 'רשומה'
+Resident
+	nohehot_today_final;
+Drop Table nohehot_today_final;
+
+Concatenate
+LOAD Date(Date#((TARIKH),'YYYYMMDD'),'DD/MM/YYYY') as 'תאריך',
+    CHNOT as [קוד חנות],
+    MSPR_KRTIS as 'קוד עובד',
+    NUM(SHAA/3600) as 'שעה',
+    NUM(SHAA/3600) as 'שעת נוכחות',
+    SOG_TNUA AS 'קוד תנועת נוכחות',
+    IF(SOG_TNUA='5','מחלה',    IF(SOG_TNUA='7','חופשה',    IF(SOG_TNUA=1,'כניסה אוטומטית',   IF(SOG_TNUA=2,'יציאה אוטומטית',    IF(SOG_TNUA=91,'כניסה ידנית',
+           IF(SOG_TNUA=92,' יציאה ידנית',    IF(SOG_TNUA=81,'כניסה ידנית',    IF(SOG_TNUA=82,'יציאה ידנית')))))))) as 'תיאור תנועת נוכחות',    
+           IF(SOG_TNOAA='out','יציאה',    IF(SOG_TNOAA='in','כניסה')) AS 'סוג תנועה'
+FROM
+    [$(vQvdPath)\$(vCompany)_Nohehut.qvd] (qvd);
+
+STORE Table2Temp into $(vQvdPath)\$(vCompany)_Table2Temp.qvd (qvd);
+Drop Table Table2Temp;
+
+Table2:
+load distinct AutoNumberHash256([תאריך],[קוד חנות],[קוד עובד],[שעה]) as Key2,
+
+//[תאריך],
+//[שעה],
+//[קופה וחנות],
+//[קוד עובד],
+[שעת האירוע],
+[מנהל נוכח],
+[סוג אירוע],
+[פרטי אירוע],
+[אירועים],
+[שעות לחישוב],
+[שעת כניסה],
+[סוג תנועה],
+[שעת נוכחות],
+[קוד תנועת נוכחות],
+[תיאור תנועת נוכחות],
+current_hour,
+previous_hour
+from $(vQvdPath)\$(vCompany)_Table2Temp.qvd (qvd);
+
+
+///////////////////////////////////////////fact_table3
+
+Yeadim:
+
+LOAD distinct 
+AutoNumberHash256(Date(Date#(TARIKH,'YYYYMMDD'),'DD/MM/YYYY'),MSPR_CHNOT ) as Key3,
+//    Date(Date#(TARIKH,'YYYYMMDD'),'DD/MM/YYYY') as 'תאריך',
+//    '~' & MSPR_CHNOT as 'קופה וחנות',
+    TCHZIT AS 'תחזית מכירות' ,
+    TACHAZIT_PRITIM as 'תחזית פריטים',
+    ADD_MOUNT as 'יעד נוסף מכירות',
+    ADD_ITEMS_STY as 'יעד נוסף פריטים',
+    FORCAST_CUST_RECREW as 'תחזית הצטרפות לקוחות'//,
+	//'יעדים' as 'רשומה'
+FROM 	[$(vQvdPath)\$(vCompany)_Yeadim.qvd] (qvd);
+
+
+
+///////////////////////////////////////////fact_table4
+
+Mevakrim:
+Load  distinct 
+AutoNumberHash256(Date(Date#(COUNT_DATE,'YYYYMMDD'),'DD/MM/YYYY'),STORE_NO,FLOOR(COUNT_TIME/3600)) as Key4,
+//    Date(Date#(COUNT_DATE,'YYYYMMDD'),'DD/MM/YYYY') as 'תאריך',
+//	'~' & STORE_NO as 'קופה וחנות',
+//	 FLOOR(COUNT_TIME/3600) AS שעה,
+ 	CUSTOMERS_NUM as 'מבקרים'
+  //	'מבקרים' as 'רשומה'
+FROM 
+	[$(vQvdPath)\$(vCompany)_Mevakrim.qvd] (qvd)
+;
+
+
+
+///////////////////////////////////////////fact_table5
+
+Table5Temp:
+Load 
+	MSPR_KRTIS as [קוד חנות],
+  	if(isnull(text(KOD_PRIT)) OR not Len(trim(text(KOD_PRIT)))>0,'0',text(KOD_PRIT)) as 'קוד פריט',
+ 	Num(ITRT_MLI,'#,##0.00')  as 'יתרת מלאי',
+ 	if(match(MSPR_KRTIS,$(vMahsan_rashi)),ITRT_MLI) as 'יתרת מלאי מחסן ראשי'
+FROM 
+	[$(vQvdPath)\$(vCompany)_Mlay.qvd] (qvd)
+WHERE 
+	ITRT_MLI<>0
+;
+Concatenate
+Load if(isnull(text(KOD_PRIT)) OR not Len(trim(text(KOD_PRIT)))>0,'0',text(KOD_PRIT)) as 'קוד פריט',
+	CHNOT as [קוד חנות],
+ 	TARIC_KNISA_RISHON AS 'תאריך כניסה ראשון',
+ 	TARIC_KNISA_AHARON as 'תאריך כניסה אחרון'
+
+FROM 	[$(vQvdPath)\$(vCompany)_tnoot_mli.qvd] (qvd);
+
+Concatenate
+Load    if(isnull(text(KOD_PRIT)) OR not Len(trim(text(KOD_PRIT)))>0,'0',text(KOD_PRIT)) as 'קוד פריט',
+    CNOT as [קוד חנות],
+    Num((MLI_MINIMOM),'#,##0.00') as 'מלאי מינימום',
+    Num((MLI_MKSIMOM),'#,##0.00') as 'מלאי מקסימום',
+    Num((MLI_OPTIMLI),'#,##0.00') as 'מלאי אופטימלי'
+FROM 
+	[$(vQvdPath)\$(vCompany)_mli_optimli.qvd] (qvd)
+;
+
+Concatenate
+
+Load
+    text(KOD_PRIT) as 'קוד פריט', 
+    CHNOT as [קוד חנות],
+    Num((MLI_MESHURIAN),'#,##0.00') as 'מלאי משוריין'
+   
+FROM 	[$(vQvdPath)\$(vCompany)_mli_meshurian.qvd] (qvd);
+ 
+Concatenate
+
+Load
+    text(KOD_PRIT) as 'קוד פריט', 
+    CHNOT as [קוד חנות],
+    Num((MLI_BDERECH),'#,##0.00') as 'מלאי בדרך'
+FROM 
+	[$(vQvdPath)\$(vCompany)_mli_baderech.qvd] (qvd);
+
+
+STORE Table5Temp into $(vQvdPath)\$(vCompany)_Table5Temp.qvd (qvd);
+Drop Table Table5Temp;
+
+Table5:
+load distinct 
+AutoNumberHash256([קוד חנות],[קוד פריט]) as Key5,
+[יתרת מלאי],[יתרת מלאי מחסן ראשי],[תאריך כניסה ראשון],[תאריך כניסה אחרון],[מלאי מינימום],[מלאי מקסימום],[מלאי אופטימלי],[מלאי משוריין],[מלאי בדרך]
+from $(vQvdPath)\$(vCompany)_Table5Temp.qvd (qvd);
+
+
+
+///////////////////////////////////////////fact_table6
+
+
+
+///////////////////////////////////////////fact_table6
+
+MLI_letaarich:
+ load distinct 
+ AutoNumberHash256([תאריך תנועה],[קוד חנות],[קוד פריט])  as Key6,
+[קוד פריט] as KodParit,
+  [שעת התנועה],
+[תאריך תנועה],
+    [כמות התנועה],
+    [אסמכתא],
+    [עלות בעת תנועה] as [מלאי עלות בעת תנועה],
+    [כניסה/יציאה מהמלאי],
+    [סוג תנועת מלאי],
+    KAMUT_MIZTABER,
+    [תאריך שעה וכמות מלאי],
+[סכום בתנועה],
+     [קוד תנועת מלאי]
+     from $(vQvdPath)\$(vCompany)_MLI_LETARICH.qvd (qvd);
+     
+ 
+
+
+KeyTableTemp :
+LOAD [תאריך],
+[קוד חנות],
+[קוד עובד],
+[קוד פריט],
+[שעה]
+FROM $(vQvdPath)\$(vCompany)_Table1Temp.qvd (qvd);
+Concatenate
+load [תאריך],
+[קוד חנות],
+[קוד עובד],
+[שעה]
+from $(vQvdPath)\$(vCompany)_Table2Temp.qvd (qvd);
+Concatenate
+LOAD [תאריך תנועה] as [תאריך],
+     [קוד חנות],
+     [קוד פריט] 
+ from $(vQvdPath)\$(vCompany)_MLI_LETARICH.qvd (qvd);
+    
+Concatenate
+Load  Date(Date#(COUNT_DATE,'YYYYMMDD'),'DD/MM/YYYY') as 'תאריך',
+	STORE_NO as [קוד חנות],
+	 FLOOR(COUNT_TIME/3600) AS שעה 	
+FROM 	[$(vQvdPath)\$(vCompany)_Mevakrim.qvd] (qvd);
+Concatenate
+LOAD  Date(Date#(TARIKH,'YYYYMMDD'),'DD/MM/YYYY') as 'תאריך',
+    MSPR_CHNOT as [קוד חנות]
+FROM 	[$(vQvdPath)\$(vCompany)_Yeadim.qvd] (qvd);
+Concatenate
+load  [קוד חנות] , [קוד פריט]
+from $(vQvdPath)\$(vCompany)_Table5Temp.qvd (qvd);
+
+
+left join (KeyTableTemp)
+load 
+    If(isnull(trim(text(KOD_PRIT))) or not Len(trim(text(KOD_PRIT)))>0, '0', text(KOD_PRIT)) AS 'קוד פריט',
+    If(isnull(trim(Text(MPTACH_DGM)))  or not Len(trim(Text(MPTACH_DGM)))>0, '0 - ללא', Text(MPTACH_DGM)) AS 'קוד דגם'
+FROM 
+	[$(vQvdPath)\$(vCompany)_Pritim.qvd] (qvd)
+;
+
+
+
+
+    
+
+KeyTable:
+load Distinct 
+AutoNumberHash256([תאריך],[קוד חנות],[קוד עובד],[קוד פריט],[שעה]) as Key1,
+AutoNumberHash256([תאריך],[קוד חנות],[קוד עובד],[שעה]) as Key2,
+AutoNumberHash256([תאריך],[קוד חנות]) as Key3,
+AutoNumberHash256([תאריך],[קוד חנות],[שעה]) as Key4,
+AutoNumberHash256([קוד חנות],[קוד פריט]) as Key5,
+AutoNumberHash256([תאריך],[קוד חנות],[קוד פריט]) as Key6,
+[תאריך],[קוד חנות],[קוד עובד],[קוד פריט],
+[שעה]&':00' as [שעה],
+[שעה] as 'חתך שעה',
+[קוד דגם]
+Resident KeyTableTemp;
+
+drop table KeyTableTemp;
+
+NoConcatenate
+
+
+Mismahim:
+Load
+     MISMACH_KEY as [מזהה מסמך],
+     SUM(KMOT_PRITIM) AS 'כמות פריטים לעסקה' ,
+     SUM(KMECHIROT_KOLEL_MAM) as 'סכום בעסקה'
+from [$(vQvdPath)\$(vCompany)_Mechirot.qvd] (qvd)
+Group By MISMACH_KEY;
+  	left join
+        load
+            Distinct MISMACH_KEY as [מזהה מסמך],
+            Num(SKOM_ANCHA,'#,##0.00') as 'סכום הנחה ברמת מסמך',  
+            Num(ACHOZ_ANCHA,'#,##0.00') as 'אחוז הנחה ברמת מסמך'
+         from 
+         	[$(vQvdPath)\$(vCompany)_Mechirot.qvd] (qvd); 
+
+
+
+ //סל קניה
+ 
+ fact_kashur:
+LOAD
+	MISMACH_KEY as 'מזהה מסמך',
+ 	MSPR_MSMKH as 'מספר מסמך - קשור',
+ 	MISMACH_KEY as 'מזהה מסמך - קשור',
+	If(isnull(text(KOD_PRIT)) or not Len(trim(text(KOD_PRIT)))>0 , '0', text(KOD_PRIT)) as 'קוד פריט קשור',
+    If(isnull(text(MPTACH_DGM)) or not Len(trim(text(MPTACH_DGM)))>0 , '0', text(MPTACH_DGM)) as 'קוד דגם קשור',
+    KMECHIROT_KOLEL_MAM as 'מכירות כולל מעמ - קשור',
+    KMOT_PRITIM as 'כמות פריטים שנמכרו - קשור'
+
+FROM 
+	[$(vQvdPath)\$(vCompany)_Mechirot.qvd] (qvd)
+;
+
+Pritim_kashur:
+LOAD
+ 	If(isnull(text(KOD_PRIT)) or not Len(trim(text(KOD_PRIT)))>0 , '0', text(KOD_PRIT)) as 'קוד פריט קשור',
+ 	If(isnull(text(KOD_PRIT)) or not Len(trim(text(KOD_PRIT)))>0 , '0', text(KOD_PRIT))&' - '& if( not Len(trim(TOR_PRIT))>0 or isnull((text(KOD_PRIT)))  , 'חסר תיאור', TOR_PRIT) as 'פריט קשור',
+    If(isnull(KOD_SOG), '0', KOD_SOG)&' - '&if(isnull(KOD_SOG) OR isnull(TOR_SOG) or not Len(trim(TOR_SOG))>0,'חסר תיאור',TOR_SOG)  as 'סוג פריט קשור',
+    text(KOD_PRIT) as 'קוד פריט בטבלת פריטים הקשורים'
+
+FROM 
+	[$(vQvdPath)\$(vCompany)_Pritim.qvd] (qvd)
+;
+Concatenate
+  Load * Inline [קוד פריט קשור,פריט קשור
+ 0,'0 - ללא'
+ ];   
+
+Concatenate
+Load
+Distinct  If( not Len(trim([קוד פריט] ))>0 , '0', [קוד פריט]) as 'קוד פריט קשור'
+from $(vQvdPath)\$(vCompany)_Table1Temp.qvd(qvd)
+Where not Exists([קוד פריט בטבלת פריטים קשורים],[קוד פריט])
+and [קוד פריט]<>0;
+
+
+
+Dgamim_kashur:
+LOAD
+ 
+    If(isnull(text(MPTACH_DGM)) or not Len(trim(text(MPTACH_DGM)))>0 , '0', text(MPTACH_DGM)) as 'קוד דגם קשור',
+    Text(MPTACH_DGM) & ' - ' & if(Text(MPTACH_DGM)='0','חסר תיאור',TOR_DGM) as 'דגם קשור'
+
+FROM 
+	[$(vQvdPath)\$(vCompany)_Dgamim.qvd] (qvd)
+;
+
+//ייצוא דטה
+
+
+	
+ //שעת הרצה
+  Taarich_Haratsa:
+
+Load 
+
+now() as 'תאריך הרצת המודל'
+
+AutoGenerate 1;
+
+
+
+;
+
+
+//---------------------------
+left keep(Table1)
+Mivzaim:
+Load
+    MZAA_MBTSA AS 'קוד מבצע',
+    MZAA_MBTSA AS 'מזהה מבצע ברמת שורה',
+    TOR_MBTSA AS 'תיאור מבצע',
+    MZAA_MBTSA&' - '& if(not Len(trim(TOR_MBTSA))>0 , 'חסר תיאור', TOR_MBTSA) AS 'מבצע'
+
+FROM 
+	[$(vQvdPath)\$(vCompany)_Mivzta.qvd] (qvd)
+;
+Concatenate
+
+Load * Inline [קוד מבצע,מבצע
+ 0,'0-(חסר)'
+ ];
+
+//---------------------------
+left keep(Table1)
+Mivzaim_Lemismak:
+Load
+    MZAA_MBTSA AS 'קוד מבצע ברמת מסמך',
+    MZAA_MBTSA AS 'מזהה מבצע ברמת מסמך',
+    TOR_MBTSA AS 'תיאור מבצע ברמת מסמך',
+    MZAA_MBTSA &'-'& TOR_MBTSA AS 'מבצע ברמת מסמך'
+FROM 
+	[$(vQvdPath)\$(vCompany)_Mivzta.qvd] (qvd)
+;
+Concatenate
+
+Load * Inline [קוד מבצע ברמת מסמך,מבצע ברמת מסמך
+ 0,'0-(חסר)'
+ ];
+
+
+
+//---------------------------
+HanuyotTemp:
+load Distinct [קוד חנות]
+Resident KeyTable;
+left join
+LOAD
+	KOD_HANUT as 'קוד חנות',
+    KOD_HANUT as 'קוד חנות בטבלת חנויות',
+    KOD_HANUT as 'קוד חנות להחרגה',
+ 	SHEM_HANUT as 'שם חנות',
+    if(CHNOT_999999LA_PIL=0, KOD_HANUT&' - '&SHEM_HANUT, CHNOT_999999LA_PIL&' - '&SHIUC_HANUT )AS [שיוך לחנות - חנות],
+//    If(not Len(trim(text(KOD_HANUT)))>0 OR isnull(text(KOD_HANUT)) ,'0 - ללא',(text(KOD_HANUT)&' - '& if(not Len(trim(SHEM_HANUT))>0 , 'חסר תיאור', SHEM_HANUT))) as 'חנות',
+    if(not Len(trim(KOD_HANUT))>0,null(),KOD_HANUT & '-' &if(not Len(trim(ISH_KSHRSHM_MKOTSR))>0 , 'חסר תיאור', ISH_KSHRSHM_MKOTSR)) AS 'חנות ושם מקוצר',
+    if(not Len(trim(KOD_TNI__TSHLOM))>0,null(),KOD_TNI__TSHLOM&' - '& if(not Len(trim(TOR_TNI__TSHLOM))>0 , 'חסר תיאור', TOR_TNI__TSHLOM)) as 'תנאי תשלום/דירוג חנות',
+    MOCHER as 'מנהל חנות',
+    if(not Len(trim(KOD_LAKOCAH_AV))>0,null(),KOD_LAKOCAH_AV&' - '& if(not Len(trim(LAKOCAH_AV))>0 , 'חסר תיאור', LAKOCAH_AV)) as 'חנות אב',
+    if(not Len(trim(KOD_SOCHEN))>0,null(),KOD_SOCHEN&' - '& if(not Len(trim(SOCHEN))>0 , 'חסר תיאור', SOCHEN)) as 'סוכן - חנות',
+    if(not Len(trim(KOD_RESHET))>0,null(),KOD_RESHET&' - '& if(not Len(trim(RESHET))>0 , 'חסר תיאור', RESHET)) as 'רשת-חנות',
+    if(not Len(trim(KOD_MIGVAN1))>0,null(),KOD_MIGVAN1&' - '& if(not Len(trim(MIGVAN1))>0 , 'חסר תיאור', MIGVAN1)) as 'מגוון חנות 1',
+    if(not Len(trim(KOD_MIGVAN2))>0,null(),KOD_MIGVAN2&' - '& if(not Len(trim(MIGVAN2))>0 , 'חסר תיאור', MIGVAN2)) as 'מגוון חנות 2',
+    if(not Len(trim(KOD_MIGVAN3))>0,null(),KOD_MIGVAN3&' - '& if(not Len(trim(MIGVAN3))>0 , 'חסר תיאור', MIGVAN3)) as 'מגוון חנות 3',
+    if(not Len(trim(KOD_MIGVAN4))>0,null(),KOD_MIGVAN4&' - '& if(not Len(trim(MIGVAN4))>0 , 'חסר תיאור', MIGVAN4)) as 'מגוון חנות 4',
+    if(not Len(trim(KOD_MIGVAN5))>0,null(),KOD_MIGVAN5&' - '& if(not Len(trim(MIGVAN5))>0 , 'חסר תיאור', MIGVAN5)) as 'מגוון חנות 5',
+    if(not Len(trim(KOD_MIGVAN6))>0,null(),KOD_MIGVAN6&' - '& if(not Len(trim(MIGVAN6))>0 , 'חסר תיאור', MIGVAN6)) as 'מגוון חנות 6',
+    if(not Len(trim(KOD_MIGVAN7))>0,null(),KOD_MIGVAN7&' - '& if(not Len(trim(MIGVAN7))>0 , 'חסר תיאור', MIGVAN7)) as 'מגוון חנות 7',
+    if(not Len(trim(KOD_MIGVAN8))>0,null(),KOD_MIGVAN8&' - '& if(not Len(trim(MIGVAN8))>0 , 'חסר תיאור', MIGVAN8)) as 'מגוון חנות 8',
+    if(not Len(trim(KOD_MIGVAN9))>0,null(),KOD_MIGVAN9&' - '& if(not Len(trim(MIGVAN9))>0 , 'חסר תיאור', MIGVAN9)) as 'מגוון חנות 9',
+    KOD_MIGVAN1 as 'קוד מגוון חנות 1',
+ 	KOD_MIGVAN2 as 'קוד מגוון חנות 2',
+ 	KOD_MIGVAN3 as 'קוד מגוון חנות 3',
+ 	KOD_MIGVAN4 as 'קוד מגוון חנות 4',
+ 	KOD_MIGVAN5 as 'קוד מגוון חנות 5',
+ 	KOD_MIGVAN6 as 'קוד מגוון חנות 6',
+    KOD_MIGVAN7 as 'קוד מגוון חנות 7',
+ 	KOD_MIGVAN8 as 'קוד מגוון חנות 8',
+ 	KOD_MIGVAN9 as 'קוד מגוון חנות 9',
+    MIGVAN1 as 'תיאור מגוון חנות 1',
+    MIGVAN2 as 'תיאור מגוון חנות 2',
+    MIGVAN3 as 'תיאור מגוון חנות 3',
+    MIGVAN4 as 'תיאור מגוון חנות 4',
+    MIGVAN5 as 'תיאור מגוון חנות 5',
+    MIGVAN6 as 'תיאור מגוון חנות 6',
+    MIGVAN7 as 'תיאור מגוון חנות 7',
+    MIGVAN8 as 'תיאור מגוון חנות 8',
+    MIGVAN9 as 'תיאור מגוון חנות 9',
+    KOD_MIGVAN1,
+ 	KOD_MIGVAN2,
+ 	KOD_MIGVAN3,
+ 	KOD_MIGVAN4,
+ 	KOD_MIGVAN5,
+ 	KOD_MIGVAN6,
+    If(isnull(trim(SHETACH_CHNUT))  or not Len(trim(SHETACH_CHNUT))>0, '0.00', SHETACH_CHNUT) as 'שטח החנות במר',
+    If(isnull(trim(MCHIRON))  or not Len(trim(MCHIRON))>0, '0.00', MCHIRON) AS 'מחירון - חנות',
+    ISHOV AS 'ישוב - חנות',
+    ISH_KSHRSHM_MKOTSR AS [שם מקוצר - חנות],
+	if(STTOS_PIL=0,'לא','כן') AS [פעיל? - חנות],
+ 	KTOBT AS 'כתובת - חנות',
+    MIKOD AS 'מיקוד - חנות',
+    MSBIT AS [מס' בית - חנות],
+    TLPONIM AS 'טלפון - חנות',
+    PKS AS 'פקס - חנות',
+    OSCH_MORSHATZOTCHSH AS [ח"פ/ע"מ - חנות],
+    MSKRTST_ANCHSH AS [מספר הנה"ח - חנות],
+    TLPON_SLOLRI AS 'נייד - חנות',
+    TLPONIM_2 AS [טלפון נוסף - חנות],
+    if(CLIENT_EMP=0,'לא','כן') AS  [מחסן לוגיסטי]
+    
+FROM 
+	[$(vQvdPath)\$(vCompany)_Hanuyot.qvd] (qvd)
+;
+LEFT Join
+LOAD
+CHNOT as 'קוד חנות',
+MSPAR_KUPA_TERMINAL AS 'מספר טרמינל',
+max(MSPR) AS 'Z_MAX'
+FROM 	[$(vQvdPath)\$(vCompany)_RIKOZ_KOPA.qvd] (qvd)
+Group By    CHNOT,    MSPAR_KUPA_TERMINAL
+;
+LEFT Join
+Load
+CHNOT as 'קוד חנות',
+MSPAR_KUPA_TERMINAL AS 'מספר טרמינל',
+(MSPR) AS 'Z_MAX',
+ (Date(Date#(PTICHATARIKH,'YYYYMMDD'),'DD/MM/YYYY')) as 'תאריך פתיחת חנות',
+ (Interval(((PTICHASHAA/3600))/24,'hh:mm:ss')) AS 'שעת פתיחה',
+ (Date(Date#(SGIRATARIKH,'YYYYMMDD'),'DD/MM/YYYY')) as 'תאריך סגירת חנות',
+ (Interval(((SGIRASHAA/3600))/24,'hh:mm:ss'))  AS 'שעת סגירה',
+  SGIRATARIKH & '~' &num(SGIRASHAA,'00000') AS 'תאריך ושעת סגירה',
+  PTICHATARIKH & '~' &num(PTICHASHAA,'00000') AS 'תאריך ושעת פתיחה'
+FROM 
+	[$(vQvdPath)\$(vCompany)_RIKOZ_KOPA.qvd] (qvd);
+
+Hanuyot:
+load *,
+If([קוד חנות]=0 ,'0 - ללא',(text([קוד חנות])&' - '& if(not Len(trim([שם חנות]))>0 , 'חסר תיאור', [שם חנות]))) as 'חנות'
+Resident HanuyotTemp;
+
+drop table HanuyotTemp;
+//---------------------------
+ 
+Lakochot_Temp:
+load distinct//// כדי לצמצם רק ללקוחות שיש לנו נתונים מכירות עליהם
+if(isnull(LKOACH) OR not Len(trim(LKOACH))>0,'0',LKOACH) AS 'קוד לקוח'
+FROM [$(vQvdPath)\$(vCompany)_Mechirot.qvd](qvd);
+ join
+/// כדי להביא את כלל הלקוחות ולא רק מזוהים
+LOAD if(isnull(MSPR_KRTIS) OR not Len(trim(MSPR_KRTIS))>0,'0',MSPR_KRTIS) as 'קוד לקוח',
+* from 
+	[$(vQvdPath)\$(vCompany)_Lakochot.qvd] (qvd);
+LEFT JOIN
+LOAD
+ACHOZ_MAM_BTOKF
+FROM 
+[$(vQvdPath)\$(vCompany)_ACHOZ_MAM_BTOKF.qvd] (qvd);
+
+
+
+
+Lakochot:
+LOAD 
+ 	if(isnull(MSPR_KRTIS) OR not Len(trim(MSPR_KRTIS))>0,'0',MSPR_KRTIS) as 'קוד לקוח',
+    HAVER_MOADON as 'חבר מועדון מינימאלי!',
+    if(KOD_TNI_TSHLOM>=HAVER_MOADON AND MSPR_KRTIS<>1,'חבר מועדון','לקוח מזדמן') as 'סוג לקוח' ,
+  	TOR as 'שם לקוח',
+    If(not Len(trim(MSPR_KRTIS))>0 OR isnull(MSPR_KRTIS) ,'0 - ללא',(MSPR_KRTIS&' - '& if(not Len(trim(TOR))>0 , 'חסר תיאור', TOR))) as 'לקוח',
+ 	ISHOV as 'ישוב לקוח',
+    if(not Len(trim(KOD_TNI_TSHLOM))>0,null(),KOD_TNI_TSHLOM&' - '& if(not Len(trim(TOR_TNI__TSHLOM))>0 , 'חסר תיאור', TOR_TNI__TSHLOM)) as 'קוד מועדון/תנאי תשלום',
+    KOD_TNI_TSHLOM,
+ 	Date(Date#(TARIKH_PTICHA,'YYYYMMDD'),'DD/MM/YYYY') as 'ת. פתיחה לקוח',
+ 	year(Date(Date#(TARIKH_PTICHA,'YYYYMMDD'),'DD/MM/YYYY')) as 'שנת הצטרפות לקוח',
+  	year(Today())-Year(Date(Date#(TARIKH_LIDA,'YYYYMMDD'),'DD/MM/YYYY')) as 'גיל לקוח',
+  	Date(Date#(BTOKF_AD,'YYYYMMDD'),'DD/MM/YYYY') AS 'בתוקף עד',
+  	if(BTOKF_AD<Today(),'לא בתוקף','בתוקף') AS 'סטטוס לקוח',
+	  	if(isnull(MSPR_KRTIS) OR not Len(trim(MSPR_KRTIS))>0,'0',MSPR_KRTIS) as 'מספר לקוח',
+	If(MSPR_KRTIS=1,'כן','לא') as 'האם לקוח כללי',
+    RZRBA_LSHABR_TLPON_SLOLRI AS מדינה,
+    Date(Date#(TARIKH_ASKA_ACHRONA,'YYYYMMDD'),'DD/MM/YYYY') AS [ת. עסקה אחרונה],
+    if(SIOOG_2MKPIL_LMAM=0,ACHOZ_MAM_BTOKF,(SIOOG_2MKPIL_LMAM-1000)/10) AS [% מע"מ],
+    ACHOZ_MAM_BTOKF as  'lll',
+    SIOOG_2MKPIL_LMAM as 'בדיקה למע"מ',
+    if(not Len(trim(SOCHEN_LAK))>0,null(),SOCHEN_LAK&' - '& if(not Len(trim(SOCHEN))>0 , 'חסר תיאור', SOCHEN)) AS [סוכן - לקוח],
+    If(isnull(trim(ITRA_LTODOT_MSHLOACH))  or not Len(trim(ITRA_LTODOT_MSHLOACH))>0, '0.00', Num(ITRA_LTODOT_MSHLOACH,'#,##0.00')) AS [יתרת משלוחים],
+    If(isnull(trim(SACH_KNIA_LLKOACH))  or not Len(trim(SACH_KNIA_LLKOACH))>0, '0.00', Num(SACH_KNIA_LLKOACH,'#,##0.00')) AS [יתרת קניות],
+    If(isnull(trim(OBLIGO_LKOACH))  or not Len(trim(OBLIGO_LKOACH))>0, '0.00', Num(OBLIGO_LKOACH,'#,##0.00')) AS אובליגו,
+    if(NSHLACH_LMGNOT=0,'לא','כן') AS [יש כרטיס מועדון?],
+    NSHLACH_LMGNOT AS [יש כרטיס מועדון לבדיקההה],
+    if(not Len(trim(KOD_MIGVAN1))>0,null(),KOD_MIGVAN1&' - '& if(not Len(trim(MIGVAN1))>0 , 'חסר תיאור', MIGVAN1)) as 'מגוון1 - לקוח',
+    if(not Len(trim(KOD_MIGVAN2))>0,null(),KOD_MIGVAN2&' - '& if(not Len(trim(MIGVAN2))>0 , 'חסר תיאור', MIGVAN2)) as 'מגוון2 - לקוח',
+    if(not Len(trim(KOD_MIGVAN3))>0,null(),KOD_MIGVAN3&' - '& if(not Len(trim(MIGVAN3))>0 , 'חסר תיאור', MIGVAN3)) as 'מגוון3 - לקוח',
+    if(not Len(trim(KOD_MIGVAN4))>0,null(),KOD_MIGVAN4&' - '& if(not Len(trim(MIGVAN4))>0 , 'חסר תיאור', MIGVAN4)) as 'מגוון4 - לקוח',
+    if(not Len(trim(KOD_MIGVAN5))>0,null(),KOD_MIGVAN5&' - '& if(not Len(trim(MIGVAN5))>0 , 'חסר תיאור', MIGVAN5)) as 'מגוון5 - לקוח',
+    if(not Len(trim(KOD_MIGVAN6))>0,null(),KOD_MIGVAN6&' - '& if(not Len(trim(MIGVAN6))>0 , 'חסר תיאור', MIGVAN6)) as 'מגוון6 - לקוח',
+    if(not Len(trim(KOD_MIGVAN7))>0,null(),KOD_MIGVAN7&' - '& if(not Len(trim(MIGVAN7))>0 , 'חסר תיאור', MIGVAN7)) as 'מגוון7 - לקוח',
+    if(not Len(trim(KOD_MIGVAN8))>0,null(),KOD_MIGVAN8&' - '& if(not Len(trim(MIGVAN8))>0 , 'חסר תיאור', MIGVAN8)) as 'מגוון8 - לקוח',
+    if(not Len(trim(KOD_MIGVAN9))>0,null(),KOD_MIGVAN9&' - '& if(not Len(trim(MIGVAN9))>0 , 'חסר תיאור', MIGVAN9)) as 'מגוון9 - לקוח',
+    MIN AS מין ,
+    Date(Date#(TARIKH_LIDA_MSHOAR,'YYYYMMDD'),'DD/MM/YYYY') AS [ת. לידה משוער],
+    	STTOS&' - '&if( LEN(trim(STTOS))>0,
+        if(STTOS=1,'מועדון',
+         if(STTOS=0,'חסר תיאור',
+    	if(STTOS=2,'הקפה',
+        	if(STTOS=3,'הקפה מזדמן',
+				if(STTOS=4,'הקפה חול',
+                	if(STTOS=9,'חסום למכירה'))))))) AS [סטטוס כרטיס],
+     if(not Len(trim(KOD_RESHET))>0,null(),KOD_RESHET&' - '& if(not Len(trim(RESHET))>0 , 'חסר תיאור', RESHET)) as 'רשת-לקוח',
+    if(CLIENT_EMP=0,'לא','כן')  AS [לקוח/עובד],
+    if(ALOW_MAIL=0,'לא','כן') AS [אישור קבלת דיוור],
+    if(ALOW_EMAIL=0,'לא','כן') AS [אישור קבלת דוא"ל],
+    if(ALOW_SMS=0,'לא','כן') AS [אישור קבלת SMS],
+    Date(Date#(LOYALTY_PROG_DATE,'YYYYMMDD'),'DD/MM/YYYY') AS [ת. הצטרפות למועדון],
+    If(isnull(trim(ITRT_KRDIT_KNIA))  or not Len(trim(ITRT_KRDIT_KNIA))>0, '0.00', Num(ITRT_KRDIT_KNIA,'#,##0.00')) AS [יתרת קרדיט],
+    If(isnull(trim(ITRT_LKOCHMSGRT_MSHRA))  or not Len(trim(ITRT_LKOCHMSGRT_MSHRA))>0, '0.00', Num(ITRT_LKOCHMSGRT_MSHRA,'#,##0.00')) AS [יתרת חובה],
+    ACHOZ_ANCHA AS [% הנחה],
+     If(isnull(trim(TIKONI_ITRA))  or not Len(trim(TIKONI_ITRA))>0, '0.00', Num(TIKONI_ITRA,'#,##0.00')) AS [תיקוני יתרה],
+    DIRA AS דירה,
+    Date(Date#(RENEW_DATE,'YYYYMMDD'),'DD/MM/YYYY') AS [ת. חידוש מועדון],
+    KNISA AS כניסה,
+    JOIN_NUM_FORM AS [מ. טופס הצטרפות],
+    KTOBT_ALKTRONIT2 AS [2 Email כתובת],
+    KTOBT_ALKTRONIT AS [Email כתובת],
+    Date(Date#(CHODSH_OIOM_LIDA,'YYYYMMDD'),'DD/MM') AS [חודש ויום לידה],
+    MSHTMSH AS משתמש,
+    Date(Date#(TARIKH_ADKON,'YYYYMMDD'),'DD/MM/YYYY') as 'ת. עדכון',
+	ISOK AS עיסוק,
+    AAROT AS הערות,
+    Date(Date#(TARIKH_LIDA,'YYYYMMDD'),'DD/MM/YYYY') as 'ת. לידה - לקוח',
+ 	KTOBT AS 'כתובת - לקוח',
+	if(STTOS_PIL=0,'לא','כן') AS [פעיל? - לקוח],
+    MSKRTST_ANCHSH AS [מספר הנה"ח],
+    ISH_KSHRSHM_MKOTSR AS [שם מקוצר - לקוח],
+    MIKOD AS [מיקוד - לקוח],
+    MSBIT AS [מס' בית - לקוח],
+    TLPONIM  AS [טלפון - לקוח],
+     PKS AS [פקס - לקוח],
+     TLPON_SLOLRI AS נייד,
+    TLPONIM_2 AS [טלפון נוסף],
+    ACHOZ_NIKOI AS [% ניכוי],
+    OSCH_MORSHATZOTCHSH AS [ח"פ/ע"מ/ת"ז],
+    MCHIRON AS [מחירון - לקוח],
+    if(not Len(trim(CHNOT_999999LA_PIL))>0,null(),CHNOT_999999LA_PIL&' - '& if(not Len(trim(SHIUC_HANUT))>0 , 'חסר תיאור', SHIUC_HANUT)) AS [שיוך לחנות - לקוח],
+    if(not Len(trim(LAKOC_AV))>0,null(),LAKOC_AV&' - '& if(not Len(trim(TOR_LAKOH_AV))>0 , 'חסר תיאור', TOR_LAKOH_AV)) AS [לקוח אב]
+    
+
+Resident
+Lakochot_Temp;
+
+DROP Table Lakochot_Temp;
+
+Concatenate
+
+Load * Inline [קוד לקוח,לקוח,סוג לקוח 
+ 0,'0 - ללא' , 'לקוח מזדמן'
+ ];
+//------------------לקוחות נוטשים
+LEFT JOIN
+Load 
+	MSPR_LAKOH as 'קוד לקוח',
+	Date(Date#(DATE_ACARON,'YYYYMMDD'),'DD/MM/YYYY') as 'תאריך קניה אחרון ללקוח',
+	 Num(SKOM_KNIA_AHARON_LLAKOH,'#,##0.00') as 'סכום קניה אחרון ללקוח'
+FROM 
+	[$(vQvdPath)\$(vCompany)_LEKOHOT_NOTSHIM.qvd] (qvd)
+;
+
+
+NoConcatenate
+//---------------------------
+PritimNew:
+Load Distinct [קוד פריט]
+Resident KeyTable;
+left join
+
+LOAD
+    
+    LOCATION AS 'איתור פריט',
+    if(not Len(trim(KOD_TSBA))>0,null(),KOD_TSBA&' - '& if(not Len(trim(TSBA))>0 , 'חסר תיאור', TSBA)) as 'צבע',
+    text(KOD_PRIT) as tseva_bdika,
+    MIDA AS 'מידה',
+    If(isnull(trim(text(KOD_PRIT))) or not Len(trim(text(KOD_PRIT)))>0, '0', text(KOD_PRIT)) AS 'קוד פריט',
+    text(KOD_PRIT) as 'קוד פריט בטבלת פריטים',
+    if(not Len(trim(SIOOG_NOSF_1))>0,null(),SIOOG_NOSF_1&' - '& if(not Len(trim(SIVOG_NOSAF_1_PRIT))>0 , 'חסר תיאור', SIVOG_NOSAF_1_PRIT)) as 'סיווג נוסף1',
+    if(not Len(trim(SIOOG_NOSF_2))>0,null(),SIOOG_NOSF_2&' - '& if(not Len(trim(SIVOG_NOSAF_2_PRIT))>0 , 'חסר תיאור', SIVOG_NOSAF_2_PRIT)) as 'סיווג נוסף2',
+    if(not Len(trim(SIOOG_NOSF_3))>0,null(),SIOOG_NOSF_3&' - '& if(not Len(trim(SIVOG_NOSAF_3_PRIT))>0 , 'חסר תיאור', SIVOG_NOSAF_3_PRIT)) as 'סיווג נוסף3',
+    TOR_PRIT AS 'תיאור פריט',
+    TOR_PRIT as teor_parit,///???
+   // If(not Len(trim(text(KOD_PRIT)))>0 OR isnull(text(KOD_PRIT)) ,'0 - ללא',(text(KOD_PRIT)&' - '& if(not Len(trim(TOR_PRIT))>0 , 'חסר תיאור', TOR_PRIT))) as 'פריט',
+   // If(isnull(trim(Text(MPTACH_DGM)))  or not Len(trim(Text(MPTACH_DGM)))>0, '0 - ללא', Text(MPTACH_DGM)) AS 'קוד דגם',    
+    if(not Len(trim(MPTACH_DGM))>0,null(),MPTACH_DGM&' - '& if(not Len(trim(TSBA))>0 , 'חסר תיאור', TSBA)) as 'דגם וצבע',
+    if(not Len(trim(KOD_SOG))>0,null(),KOD_SOG)&' - '&if(not Len(trim(TOR_SOG))>0 , 'חסר תיאור', TOR_SOG) as 'סוג פריט', 
+    if(not Len(trim(KOD_SOG))>0,null(),KOD_SOG) as 'קוד סוג פריט',
+//     if(not Len(trim(KOD_SPK))>0,null(),KOD_SPK)&' - '&if(not Len(trim(SHEM_SAPAK))>0 , 'חסר תיאור', SHEM_SAPAK) as 'ספק',
+    if(not Len(trim(KOD_SPK))>0,null(),KOD_SPK) as 'קוד ספק',
+    if(not Len(trim(KOD_MIGVAN1))>0,null(),KOD_MIGVAN1&' - '& if(not Len(trim(MIGVAN1))>0 , 'חסר תיאור', MIGVAN1)) as 'מגוון פריט 1',
+    if(not Len(trim(KOD_MIGVAN2))>0,null(),KOD_MIGVAN2&' - '& if(not Len(trim(MIGVAN2))>0 , 'חסר תיאור', MIGVAN2)) as 'מגוון פריט 2',
+    if(not Len(trim(KOD_MIGVAN3))>0,null(),KOD_MIGVAN3&' - '& if(not Len(trim(MIGVAN3))>0 , 'חסר תיאור', MIGVAN3)) as 'מגוון פריט 3',
+    if(not Len(trim(KOD_MIGVAN4))>0,null(),KOD_MIGVAN4&' - '& if(not Len(trim(MIGVAN4))>0 , 'חסר תיאור', MIGVAN4)) as 'מגוון פריט 4',
+    if(not Len(trim(KOD_MIGVAN5))>0,null(),KOD_MIGVAN5&' - '& if(not Len(trim(MIGVAN5))>0 , 'חסר תיאור', MIGVAN5)) as 'מגוון פריט 5',
+    if(not Len(trim(KOD_MIGVAN6))>0,null(),KOD_MIGVAN6&' - '& if(not Len(trim(MIGVAN6))>0 , 'חסר תיאור', MIGVAN6)) as 'מגוון פריט 6',
+    Num(ALOT_LICHIDA,'#,##0.00') as  'מחירון_0_עלות',
+    if(isnull(MCHIR_1),'0.00',Num(MCHIR_1,'#,##0.00')) as 'מחירון1',
+    if(isnull(MCHIR_2),'0.00',Num(MCHIR_2,'#,##0.00')) as 'מחירון2',
+    if(isnull(MCHIR_3),'0.00',Num(MCHIR_3,'#,##0.00')) as 'מחירון3',
+    if(isnull(MCHIR_4),'0.00',Num(MCHIR_4,'#,##0.00')) as 'מחירון4',
+    if(isnull(MCHIR_5),'0.00',Num(MCHIR_5,'#,##0.00')) as 'מחירון5',
+    if(isnull(MCHIR_6),'0.00',Num(MCHIR_6,'#,##0.00')) as 'מחירון6',
+    if(isnull(MCHIR_1),'0.00',Num(MCHIR_1,'#,##0.00')) as 'מחירון 1',
+    if(isnull(MCHIR_2),'0.00',Num(MCHIR_2,'#,##0.00')) as 'מחירון 2',
+    if(isnull(MCHIR_3),'0.00',Num(MCHIR_3,'#,##0.00')) as 'מחירון 3',
+    if(isnull(MCHIR_4),'0.00',Num(MCHIR_4,'#,##0.00')) as 'מחירון 4',
+    if(isnull(MCHIR_5),'0.00',Num(MCHIR_5,'#,##0.00')) as 'מחירון 5',
+    if(isnull(MCHIR_6),'0.00',Num(MCHIR_6,'#,##0.00')) as 'מחירון 6'
+FROM 
+	[$(vQvdPath)\$(vCompany)_Pritim.qvd] (qvd)
+;
+
+
+LEFT JOIN
+Load
+if(isnull(text(KOD_PRIT)) OR not Len(trim(text(KOD_PRIT)))>0,'0',text(KOD_PRIT)) as [קוד פריט],
+date(MAX(Date(Date#(TARIKH_RISHOM,'YYYYMMDD'),'DD/MM/YYYY') ),'DD/MM/YYYY') AS 'תאריך מכירה אחרון לפריט'
+from  [$(vQvdPath)\$(vCompany)_Mechirot.qvd](qvd)
+Group BY 
+KOD_PRIT
+;
+
+LEFT Join
+LOAD   KodParit as  [קוד פריט],
+SUM([כמות התנועה]) as 'כמות לפיפו',
+SUM( [כמות התנועה]*[מלאי עלות בעת תנועה])/SUM([כמות התנועה]) AS 'מחיר ליחידה לפי ממוצע משוקלל'
+Resident MLI_letaarich
+ Where    [כניסה/יציאה מהמלאי] =  'כניסה'  and  Match(  [קוד תנועת מלאי], 1,2,36)
+Group By KodParit  ;
+ 
+LEFT JOIN
+LOAD 
+	text(KOD_PRIT) as 'קוד פריט',
+	Num(ITRT_MLI,'#,##0.00') AS 'רמת מלאי' // רמת מלא היא ברמת פריט בלבד לכן נמצאת פה
+FROM 
+	[$(vQvdPath)\$(vCompany)_Ramat_Mlay.qvd] (qvd) ;  
+
+Pritim:
+load *,
+ If([קוד פריט]=0 and isnull([תיאור פריט]) ,'0 - ללא',(text([קוד פריט])&' - '& if(isnull([תיאור פריט]) , 'חסר תיאור', [תיאור פריט]))) as 'פריט'
+
+resident PritimNew;
+
+drop table PritimNew;
+
+//---------------------------
+left keep(Pritim)
+Dgamim:
+LOAD
+	if(not Len(trim(MODELIST))>0,null(),MODELIST&' - '& if(not Len(trim(TOR_MODELIST))>0 , 'חסר תיאור', TOR_MODELIST)) as 'תדמני/ת',
+    If(isnull(trim(Text(MPTACH_DGM)))  or not Len(trim(Text(MPTACH_DGM)))>0, '0', Text(MPTACH_DGM)) AS 'קוד דגם',
+    //TOR_DGM AS 'תיאור דגם',
+    
+    If(isnull(trim(Text(MPTACH_DGM)))  or not Len(trim(Text(MPTACH_DGM)))>0, '0', Text(MPTACH_DGM))&' - '&if(not Len(trim(TOR_DGM))>0 , 'חסר תיאור', TOR_DGM) as 'דגם',
+    
+    text(MPTACH_DGM) as 'קוד דגם בטבלת דגמים',
+    if(not Len(trim(ONA))>0,null(),ONA&' - '& if(not Len(trim(TOR_ONA))>0 , 'חסר תיאור', TOR_ONA)) as 'עונת דגם',
+ 	2000    + SHNA as 'שנת דגם',
+    if(not Len(trim(KOD_MOTG))>0,null(),KOD_MOTG&' - '& if(not Len(trim(TOR_MOTG))>0 , 'חסר תיאור', TOR_MOTG)) as 'מותג',
+    if(not Len(trim(KOD_BD))>0,null(),KOD_BD&' - '& if(not Len(trim(TOR_BD))>0 , 'חסר תיאור', TOR_BD)) as 'סוג בד',
+    if(not Len(trim(KOLKTSIA))>0,null(),KOLKTSIA&' - '& if(not Len(trim(TOR))>0 , 'חסר תיאור', TOR)) as 'קולקציה',  
+    if(not Len(trim(KOD_MIGVAN1))>0,null(),KOD_MIGVAN1&' - '& if(not Len(trim(MIGVAN1))>0 , 'חסר תיאור', MIGVAN1)) as 'מגוון דגם 1',
+    if(not Len(trim(KOD_MIGVAN2))>0,null(),KOD_MIGVAN2&' - '& if(not Len(trim(MIGVAN2))>0 , 'חסר תיאור', MIGVAN2)) as 'מגוון דגם 2',
+    if(not Len(trim(KOD_MIGVAN3))>0,null(),KOD_MIGVAN3&' - '& if(not Len(trim(MIGVAN3))>0 , 'חסר תיאור', MIGVAN3)) as 'מגוון דגם 3',
+    if(not Len(trim(KOD_MIGVAN4))>0,null(),KOD_MIGVAN4&' - '& if(not Len(trim(MIGVAN4))>0 , 'חסר תיאור', MIGVAN4)) as 'מגוון דגם 4',
+    if(not Len(trim(KOD_MIGVAN5))>0,null(),KOD_MIGVAN5&' - '& if(not Len(trim(MIGVAN5))>0 , 'חסר תיאור', MIGVAN5)) as 'מגוון דגם 5',
+    if(not Len(trim(KOD_MIGVAN6))>0,null(),KOD_MIGVAN6&' - '& if(not Len(trim(MIGVAN6))>0 , 'חסר תיאור', MIGVAN6)) as 'מגוון דגם 6',
+    if(not Len(trim(CODE_ITSRN))>0,null(),CODE_ITSRN&' - '& if(not Len(trim(TOR_ITSRN))>0 , 'חסר תיאור', TOR_ITSRN)) as 'יצרן',
+    OSEF AS 'קוד אוסף',
+//     if(not Len(trim(SPK))>0,null(),SPK&' - '& if(not Len(trim(SHEM_SAPAK))>0 , 'חסר תיאור', SHEM_SAPAK)) as 'ספק דגם',
+    SOG_PRIT AS 'סוג פריט בדגם',
+    if(not Len(trim(WASH_CODE))>0,null(),WASH_CODE&' - '& if(not Len(trim(DESC_HEB))>0 , 'חסר תיאור', DESC_HEB)) as 'טיפול בדגם',
+    LOCATION AS 'איתור דגם',
+    BY_WAIGHT AS 'האם לפי משקל',
+    if(not Len(trim(YECHIDAT_MIDA))>0,null(),YECHIDAT_MIDA&' - '& if(not Len(trim(TEUR_MIDA))>0 , 'חסר תיאור', TEUR_MIDA)) as 'יחידת מידה',
+    if(not Len(trim(DESINER))>0,null(),DESINER&' - '& if(not Len(trim(TOR_DESINER))>0 , 'חסר תיאור', TOR_DESINER)) as 'מעצב/ת'
+    FROM
+	[$(vQvdPath)\$(vCompany)_Dgamim.qvd] (qvd)
+;
+ 
+ //---------------------------
+
+Sapakim:
+Load
+	KOD_SAPAK as 'קוד ספק',
+    TOR_SAPAK as 'שם ספק',
+    KOD_SAPAK &' - '& TOR_SAPAK as 'ספק',
+   if(not Len(trim(KOD_MIGVAN1))>0,null(),KOD_MIGVAN1&' - '& if(not Len(trim(MIGVAN1))>0 , 'חסר תיאור', MIGVAN1)) as 'מגוון1 - ספק',
+    if(not Len(trim(KOD_MIGVAN2))>0,null(),KOD_MIGVAN2&' - '& if(not Len(trim(MIGVAN2))>0 , 'חסר תיאור', MIGVAN2)) as 'מגוון2 - ספק',
+    if(not Len(trim(KOD_MIGVAN3))>0,null(),KOD_MIGVAN3&' - '& if(not Len(trim(MIGVAN3))>0 , 'חסר תיאור', MIGVAN3)) as 'מגוון3 - ספק',
+    if(not Len(trim(KOD_MIGVAN4))>0,null(),KOD_MIGVAN4&' - '& if(not Len(trim(MIGVAN4))>0 , 'חסר תיאור', MIGVAN4)) as 'מגוון4 - ספק',
+    if(not Len(trim(KOD_MIGVAN5))>0,null(),KOD_MIGVAN5&' - '& if(not Len(trim(MIGVAN5))>0 , 'חסר תיאור', MIGVAN5)) as 'מגוון5 - ספק',
+    if(not Len(trim(KOD_MIGVAN6))>0,null(),KOD_MIGVAN6&' - '& if(not Len(trim(MIGVAN6))>0 , 'חסר תיאור', MIGVAN6)) as 'מגוון6 - ספק',
+    if(not Len(trim(KOD_MIGVAN7))>0,null(),KOD_MIGVAN7&' - '& if(not Len(trim(MIGVAN7))>0 , 'חסר תיאור', MIGVAN7)) as 'מגוון7 - ספק',
+    if(not Len(trim(KOD_MIGVAN8))>0,null(),KOD_MIGVAN8&' - '& if(not Len(trim(MIGVAN8))>0 , 'חסר תיאור', MIGVAN8)) as 'מגוון8 - ספק',
+    if(not Len(trim(KOD_MIGVAN9))>0,null(),KOD_MIGVAN9&' - '& if(not Len(trim(MIGVAN9))>0 , 'חסר תיאור', MIGVAN9)) as 'מגוון9 - ספק'
+From	
+	[$(vQvdPath)\$(vCompany)_Sapakim.qvd] (qvd)
+;
+
+//---------------------------
+
+Ovdim:
+Load Distinct [קוד עובד] Resident KeyTable;
+left join
+LOAD
+ 	MSPR_KRTIS as 'קוד עובד',
+ 	Date(Date#(TARIKH_PTICHA,'YYYYMMDD'),'DD/MM/YYYY') as 'ת. פתיחה עובד',
+ 	MCHIRON AS [מחירון - עובד],
+    MSPR_KRTIS as 'קוד עובד בטבלת העובדים',
+ 	TOR  as 'שם עובד',
+    ISHOV  as 'ישוב - עובד',
+   // If(not Len(trim((MSPR_KRTIS)))>0 OR ISNULL((MSPR_KRTIS))>0,'0 - ללא',(if(not Len(trim(MSPR_KRTIS))>0,null(),MSPR_KRTIS&' - '& if(not Len(trim(TOR))>0 , 'חסר תיאור', TOR)))) as 'עובד',
+ 	KTOBT_ALKTRONIT AS [Email עובד - כתובת],
+    Date(Date#(CHODSH_OIOM_LIDA,'YYYYMMDD'),'DD/MM/YYYY') AS [חודש ויום לידה - עובד],
+    MSHTMSH AS 'משתמש - עובד',
+    Date(Date#(TARIKH_ADKON,'YYYYMMDD'),'DD/MM/YYYY') as 'ת. עדכון - עובד',
+	ISOK AS 'עיסוק - עובד',
+    AAROT AS 'הערות - עובד',
+    Date(Date#(TARIKH_LIDA,'YYYYMMDD'),'DD/MM/YYYY') as 'ת. לידה - עובד',
+ 	KTOBT AS 'כתובת - עובד',
+	if(STTOS_PIL=0,'לא','כן') AS [פעיל? - עובד],
+    MSKRTST_ANCHSH AS [מספר הנה"ח - עובד],
+    ISH_KSHRSHM_MKOTSR AS [שם מקוצר - עובד],
+    MIKOD AS 'מיקוד - עובד',
+    MSBIT AS [מס' בית - עובד],
+    TLPONIM AS 'טלפון - עובד',
+    PKS AS 'פקס - עובד',
+    TLPON_SLOLRI AS 'נייד - עובד',
+    TLPONIM_2 AS [טלפון נוסף - עובד],
+    ACHOZ_NIKOI AS [% ניכוי - עובד],
+    OSCH_MORSHATZOTCHSH AS [ת"ז - עובד],
+    if(not Len(trim(KOD_RESHET))>0,null(),(KOD_RESHET)&' - '& if(not Len(trim(RESHET))>0 , 'חסר תיאור', RESHET)) as 'רשת-עובד',
+    if(not Len(trim(CHNOT_999999LA_PIL))>0,null(),CHNOT_999999LA_PIL&' - '& if(not Len(trim(SHIUC_HANUT))>0 , 'חסר תיאור', SHIUC_HANUT)) AS [שיוך לחנות - עובד]
+FROM 
+	[$(vQvdPath)\$(vCompany)_Ovdim.qvd] (qvd)
+;
+
+ STORE Ovdim into $(vQvdPath)\$(vCompany)_Ovdim_new.qvd (qvd);
+DROP Table Ovdim;
+
+Ovdim:
+load *,
+if(([קוד עובד]=0 and isnull([שם עובד])) or isnull([קוד עובד]), '0 - ללא', [קוד עובד]&' - '& if(isnull([שם עובד]), 'חסר תיאור',[שם עובד])) as 'עובד'
+    from $(vQvdPath)\$(vCompany)_Ovdim_new.qvd (qvd);
+  
+////////////////////////////////////////////////////////////////////////////
+ 
+Mocranim_New:
+load distinct  [קוד מוכרן]
+FROM $(vQvdPath)\$(vCompany)_Table1Temp.qvd (qvd);
+left join
+LOAD
+   If(isnull(trim(MSPR_KRTIS)) or not Len(trim(MSPR_KRTIS))>0, '0', MSPR_KRTIS) AS 'קוד מוכרן',
+    TOR as [שם מוכרן],
+     ISHOV AS 'ישוב מוכרן',
+     MSPR_KRTIS as 'קוד מוכרן בטבלת העובדים'
+FROM 
+	$(vQvdPath)\$(vCompany)_Ovdim.qvd (qvd)
+;
+STORE Mocranim_New into $(vQvdPath)\$(vCompany)_Mocranim_New.qvd (qvd);
+DROP Table Mocranim_New;
+
+Mocranim:
+load  [קוד מוכרן],
+if(isnull([קוד מוכרן]) or ([קוד מוכרן]=0 and isnull([שם מוכרן])), '0 - ללא', [קוד מוכרן]&' - '&if(isnull([שם מוכרן]),'חסר תיאור',[שם מוכרן])) as [מוכרן],
+[ישוב מוכרן]
+from $(vQvdPath)\$(vCompany)_Mocranim_new.qvd (qvd);
+
+
+////////////////////////////////////////////////////////////////////////////
+ 
+Kupaim:
+load distinct [קופאי] Resident Table1;
+left join
+LOAD
+     MSPR_KRTIS as 'קופאי',
+     MSPR_KRTIS as 'קופאי בטבלת העובדים',
+     TOR as 'שם קופאי/ת',
+//     If(not Len(trim(MSPR_KRTIS))>0 OR isnull(MSPR_KRTIS) ,'0 - ללא',(if(not Len(trim(MSPR_KRTIS))>0,null(),MSPR_KRTIS&' - '& if(not Len(trim(TOR))>0 , 'חסר תיאור', TOR))))  as 'קופאי/ת',
+      ISHOV AS 'ישוב קופאי'
+FROM 
+	[$(vQvdPath)\$(vCompany)_Ovdim.qvd] (qvd);
+
+ STORE Kupaim into $(vQvdPath)\$(vCompany)_Kupaim_new.qvd (qvd);
+DROP Table Kupaim;
+
+Kupaim:
+load [קופאי],[שם קופאי/ת],
+if(isnull([קופאי]) or ([קופאי]=0 and isnull([שם קופאי/ת])), '0 - ללא', [קופאי]&' - '&if(isnull([שם קופאי/ת]),'חסר תיאור',[שם קופאי/ת])) as [קופאי/ת],
+[ישוב קופאי] from $(vQvdPath)\$(vCompany)_Kupaim_new.qvd (qvd);
+
+//-------------------------
+
+Dochot_z:
+LOAD
+     MEZHE_DOACH_Z as 'דוח Z' ,
+     Date(Date#(PTICHATARIKH,'YYYYMMDD'),'DD/MM/YYYY') as 'תאריך פתיחת Z',
+     Date(Date#(SGIRATARIKH,'YYYYMMDD'),'DD/MM/YYYY') as 'תאריך סגירת Z',
+     Interval((PTICHASHAA/3600)/24,'hh:mm') as 'שעת פתיחה Z',
+     Interval((SGIRASHAA/3600)/24,'hh:mm') as 'שעת סגירה Z'
+ FROM 
+ 	[$(vQvdPath)\$(vCompany)_Dochot_z.qvd]
+	(qvd);
+
+
+
+
+//------------------------------FIFO-
+
+FOR vIndex = 1 to 1
+     LET vAlut_Bin = Repeat('1',$(vIndex)) & '0';
+ 
+     Aluyot_Bin:
+     MAPPING Load * Inline [
+            alut, alut_bin
+            $(vIndex),$(vAlut_Bin)
+     ];
+next
+ 
+NoConcatenate
+Tnuot_Temp:
+Load
+     [תאריך תנועה],
+     KodParit,
+     [קוד תנועת מלאי],
+     [כמות התנועה],
+     [מלאי עלות בעת תנועה],
+     [תאריך שעה וכמות מלאי],
+     [אסמכתא],
+     Repeat(ApplyMAP('Aluyot_Bin',    Round(([מלאי עלות בעת תנועה]* 10))), If([כמות התנועה]<0,0,[כמות התנועה])) as repeat
+Resident 
+     MLI_letaarich
+Where
+  [כניסה/יציאה מהמלאי] = 'כניסה'
+      and Match( [קוד תנועת מלאי],1,2,36)
+;
+ 
+NoConcatenate
+TNUOT_ORDER:
+Load
+     *
+Resident
+     Tnuot_Temp
+Order By 
+     KodParit,
+     [תאריך תנועה]    
+;
+Drop Table Tnuot_Temp;
+ 
+NoConcatenate
+Tnuot_fIfo:
+Load
+      [תאריך תנועה]  ,
+     KodParit,
+     [תאריך שעה וכמות מלאי],
+     [כמות התנועה],
+     [מלאי עלות בעת תנועה],
+     [אסמכתא],
+     If(KodParit <> Previous(KodParit) OR ISNULL(Previous(KodParit)), repeat, repeat & PEEK('repeat')) as 'repeat',
+     'תנועות מלאי עבור מלאי לתאריך' as 'רשומה'
+Resident
+     TNUOT_ORDER
+;
+Drop Table TNUOT_ORDER;
+ 
+Left Join (MLI_letaarich)
+Load
+    [תאריך שעה וכמות מלאי] & '~' & repeat as 'עלות פיפו בינארית',
+     [תאריך תנועה],
+    KodParit,
+    [תאריך שעה וכמות מלאי],
+    repeat,
+   [אסמכתא]
+ 
+Resident 
+     Tnuot_fIfo
+;
+ 
+Drop Table Tnuot_fIfo;
+
+Zikuim:
+LOAD
+MISMACH_KEY as 'מזהה מסמך',
+MSPRCHN  as 'מספר זיכוי',
+    MSPRCHN  as 'מספר קבלת זיכוי',
+    SKOM as 'סכום',
+    if(NPDA=0,'לא','כן') as 'האם נפדה זיכוי?',
+    BCHNOT as 'נפדה בחנות',
+    BCHNOT& '-' &I_MSPR_CHN as 'נפדה ע"י מספר חשבונית',
+   Date(Date#(BTARIKH,'YYYYMMDD'),'DD/MM/YYYY')  as 'נפדה בתאריך',
+    TARIKHADKON as 'תאריך עדכון',
+    EICH_NIFDA as 'איך נפדה זיכוי',
+    CUST_NO as 'מספר לקוח חשבונית מקורית',
+SKOM as 'סכום זיכוי'
+FROM [$(vQvdPath)\$(vCompany)_Zikuim.qvd]
+(qvd);
+
+
+
+
+//---------------------------------
+
+NoConcatenate
+
+takbulim_temp:
+LOAD
+    Date(Date#(TARIKH_RISHOM,'YYYYMMDD'),'DD/MM/YYYY') as 'תאריך רישום',
+    Date(Date#(TARIKH_TSHLOM,'YYYYMMDD'),'DD/MM/YYYY') as 'תאריך תשלום',
+    SOG_TSHLOM as 'סוג תקבול',
+    //PAYMENT_METHOD_GROUP&'-'& GROUP_DESC as 'קבוצת אמצעי תשלום',
+    if(not Len(trim(GROUP_NO))>0,null(),GROUP_NO&' - '& if(not Len(trim(GROUP_DESC))>0 , 'חסר תיאור', GROUP_DESC)) as 'קבוצת אמצעי תשלום',
+    OPKD_BSHOBR as 'הופקד בשובר',
+    if(ISNULL(MSPR_KBLA) OR ISNULL(KOD_HANUT),'ללא קופה','תקין') as 'ללא חנות/ללא מספר קבלה',
+    MSPR_SHCH_KRTIS_ASHRI as 'פירוט תשלום אשראי',
+    MSPR_KBLA as 'תקבולים מספר קבלה',
+    MEZHE_DOACH_Z as 'דוח Z' ,
+    MSPAR_ASHRI&'-'&TOR_ASHRI as 'סוג אשראי',
+    Num(SKOM,'#,##0.00')  AS 'סכום מטבע מקורי',
+    N_MTBA as 'מטבע תקבולים',
+    //N_MTBA&'-'&SIMOL_MTBA&'-'&SHM_MTBA AS 'סימול מטבע הזמנה',
+    if(not Len(trim(N_MTBA))>0,null(),N_MTBA&' - '& if(not Len(trim(SHM_MTBA))>0 , 'חסר תיאור', SIMOL_MTBA&'-'&SHM_MTBA)) AS 'סימול מטבע הזמנה',
+    SKOM as 'סכום מטבע ש"ח',
+    CREDIT_CARD_NAME_ABS as 'כרטיס אשראי',
+    if(not Len(trim(KOD))>0,null(),KOD&' - '& if(not Len(trim(SOG))>0 , 'חסר תיאור', SOG)) as 'סוג תשלום',
+	//KOD&'-'&SOG as 'סוג תשלום',
+    KOD as 'קוד סוג תשלום',
+    BNK as 'קוד בנק',
+    if(not Len(trim(BNK))>0,null(),BNK&' - '& if(not Len(trim(TOR_BNK))>0 , 'חסר תיאור', TOR_BNK)) AS 'בנק',
+    //BNK&'-'&TOR_BNK AS 'בנק',
+    TOR_BNK as 'תאור בנק',
+     Num(SKOM,'#,##0.00') as 'סכום בשורת קבלה',
+    Num(SKOM_BCHSHBONIOT,'#,##0.00') AS 'סכום בחשבונית',
+    Num(SACH_TKBOLIM,'#,##0.00')  as 'סהכ תקבולים',
+    Num(MZOMN,'#,##0.00')   as 'מזומן',
+    Num(ODF,'#,##0.00')   as 'עודף',
+    Num(SHKIM,'#,##0.00')   as 'שקים',
+    Num(ASHRI,'#,##0.00')  as 'אשראי',
+    Num(SHOBRI_ZIKOI,'#,##0.00')    as 'שוברי זיכוי',
+    Num(TLOSHI_ANCHA,'#,##0.00')    as 'תקבולים אחרים',
+    Num(ZIKOI_SHOTSA,'#,##0.00')    as 'זיכוי שהוצא',
+    MSPR_ISHOR as 'מספר אישור',
+    ASMKTA&'-'&if(ASMKTA=0,'עסקה ללא אישור' ,if(ASMKTA=1,'אושר ע"י שב"א' ,if(ASMKTA=2,'אושר ע"י חברת האשראי', if(ASMKTA=3,'אושר טלפונית',
+    if(ASMKTA=4,'עסקה ללא אישור (VX)' , if(ASMKTA=5,' עסקה מאולצת (VX)')))))) as 'מקור אישור אשראי/סוג המחאה',
+    Date(Date#(TARIKH_APKDA,'YYYYMMDD'),'DD/MM/YYYY') as 'תאריך הפקדה',
+    MSPR_RSHIMA as 'מספר רשימה',
+    MSPR_TNOAA as 'מספר תנועה',
+    WALLET_CODE as 'קוד ארנק',
+    OPERATION_ID as 'קוד פעולה',
+    SNIF AS 'סניף',
+    IF(BNK>1 and BNK<79,'שיק',
+   		IF(BNK>80 AND BNK<200,'תווי קניה',
+    	'תווים אלקטרונים לפי מודול מיוחד')) as שיקים ,
+    KOD_HANUT&'-'&MSPR_KBLA as 'מספר קבלה',
+    IF(SOG_TSHLOM=3, BNK,0) as 'נקודות שקלים',
+    IF(SOG_TSHLOM=3, SNIF ,0) as 'נקודות אגורות',
+  	IF(SOG_TSHLOM=3 and BNK=0 and SNIF=0,' ' ,'נקודות/כוכבים')as נקודות,
+    IF(SOG_TSHLOM=3,if(not Len(trim(NUM_KOD_SOLEK))>0,null(),NUM_KOD_SOLEK&' - '& if(not Len(trim(KOD_SOLEK))>0 , 'חסר תיאור', KOD_SOLEK))) as 'אשראי סולק',
+    IF(SOG_TSHLOM=3,KOD_SOLEK) as 'אשראי סולק לתת סוג תשלום' ,
+    IF(SOG_TSHLOM=3,if(not Len(trim(NUM_KOD_MANPIK))>0,null(),NUM_KOD_MANPIK&' - '& if(not Len(trim(MANPIK))>0 , 'חסר תיאור', MANPIK))) as 'אשראי מנפיק'  ,
+    MSPR_TSHLOMIM AS 'מספר תשלומים',
+    MSPAR_SAPAK AS 'ספק אשראי',
+    MSPAR_MASOF as 'מסוף אשראי'
+FROM 
+	[$(vQvdPath)\$(vCompany)_Takbulim.qvd]
+	(qvd)
+WHERE 
+	Match(SOG_TSHLOM,1,2,3,4,6,9);
+
+NoConcatenate
+
+Takbulim:
+
+//Concatenate(Facts_Temp)
+
+Load
+	 *,
+     //MISMACH_KEY2 as 'מזהה מסמך',
+     [סימול מטבע הזמנה] as 'מטבע קבלה',
+     Year([תאריך רישום]) as 'שנת רישום',
+ 	 Month([תאריך רישום]) as 'חודש רישום',
+     Year([תאריך רישום]) & '-' & Num(Month([תאריך רישום]),'00')  as 'שנה וחודש רישום',
+  	 If(not IsNull([תאריך רישום]), 'Q' & Ceil(Num(Month( [תאריך רישום]))/3)) as 'רבעון רישום',
+ 	 Text(Num(Day([תאריך רישום]),'00')) as 'יום רישום',
+  	 Text(Weekday([תאריך רישום])) as 'יום בשבוע רישום',
+     Year([תאריך תשלום]) as 'שנת תשלום',
+ 	 Month([תאריך תשלום]) as ' חודש תשלום',
+     Year([תאריך תשלום]) & '-' & Num(Month([תאריך תשלום]),'00')  as 'שנה וחודש תשלום',
+  	 If(not IsNull([תאריך תשלום]), 'Q' & Ceil(Num(Month([תאריך תשלום]))/3)) as 'רבעון תשלום',
+ 	 Text(Num(Day([תאריך תשלום]),'00')) as 'יום תשלום',
+  	 Text(Weekday([תאריך תשלום])) as 'יום בשבוע תשלום',
+     IF([סוג תקבול]='1',
+     1&'-'&'מזומן',
+      IF([סוג תקבול]='6',
+      6&'-'&'העברה בנקאית',
+      IF([סוג תקבול]=2,
+      2&'-'&שיקים,
+       IF([סוג תקבול]=3,
+      3&'-'&if(isnull([אשראי סולק לתת סוג תשלום])
+      ,'אשראי ידני',
+      [אשראי סולק לתת סוג תשלום]),
+        IF([סוג תקבול]=4,
+        4&'-'&'קבלת זיכוי',
+        IF([סוג תקבול]=9,
+        9&'-'&'הוצאת זיכוי'
+      )))))) as 'סוג כרטיס/סוג תו',
+      IF([סוג תקבול]='1',
+      [סימול מטבע הזמנה],
+      IF([סוג תקבול]= 2,[בנק],
+      	IF([סוג תקבול]= 3,
+        [סוג אשראי]))) as 'תיאור תשלום' ,
+        IF([סוג תקבול]='1',
+        [סימול מטבע הזמנה],
+        IF([סוג תקבול]= 3,
+        '***********'&Right( [פירוט תשלום אשראי],4),
+     [פירוט תשלום אשראי]
+      )) as 'פרטי תשלום'
+
+Resident
+	takbulim_temp;
+drop Table takbulim_temp;
+
+DateFieldTemp:
+load 
+date(date(Date#($(vLoadFrom),'YYYYMMDD'),'DD/MM/YYYY')+rowno()-1) as TEMPDATE
+AutoGenerate
+date(Date#($(vToday),'YYYYMMDD'),'DD/MM/YYYY')-date(Date#($(vLoadFrom),'YYYYMMDD'),'DD/MM/YYYY')+1;
+
+DateField:
+load TEMPDATE as תאריך,
+    Year(TEMPDATE) as 'שנה',
+ 	Month(TEMPDATE) as 'חודש',
+    Year(TEMPDATE) & '-' & Num(Month(TEMPDATE),'00')  as 'שנה וחודש',
+  	If(not IsNull(TEMPDATE), 'Q' & Ceil(Num(Month(TEMPDATE))/3)) as 'רבעון',
+  	Week(TEMPDATE) as 'שבוע',
+ 	Num(Day(TEMPDATE)) as 'יום',
+  	Text(Weekday(TEMPDATE)) as 'יום בשבוע'
+Resident DateFieldTemp;
+
+drop table DateFieldTemp;
+
+Tkufa_Hashvaa:
+Load Distinct
+     [שנה] as 'שנה להשוואה',
+     [חודש] as 'חודש להשוואה',
+     [רבעון] as 'רבעון להשוואה',
+     [יום] as 'יום להשוואה',
+     [תאריך] as 'תאריך להשוואה'
+Resident DateField;
+//	 Facts
+// where 
+// 	 [שנה]>=2014
+// 	 and [שנה]<=2017
+;
+
+NoConcatenate
+
+date1_lekohot_notshim:
+Load Distinct
+ 	[תאריך] as 'תאריך לקוחות נוטשים1'
+Resident DateField
+//	Facts
+// where 
+//	 [שנה]>=2014
+// 	 and [שנה]<=2017
+;
+
+NoConcatenate
+date2_lekohot_notshim:
+Load Distinct
+    [תאריך] as 'תאריך לקוחות נוטשים2'
+Resident DateField
+//	Facts
+// where 
+// 	 [שנה]>=2014
+// 	 and [שנה]<=2017
+;
+
+
+
+//תקופות להשוואה
+
+NoConcatenate
+Tkufot:
+Load * INLINE [
+תקופה,מיון תקופה
+היום,0
+שבוע נוכחי,2
+אתמול,1
+ב-7 ימים אחרונים,3
+ב-30 ימים אחרונים,4
+חודש נוכחי,5
+חודש קודם,6
+שנה נוכחית,7
+הכל,8
+];
+
+Taarichei_Tkufot:
+
+LOAD DISTINCT 
+	[תאריך],
+	'אתמול' as 'תקופה'
+RESIDENT DateField
+//	Facts
+Where
+	[תאריך]=(today()-1)
+;
+
+Concatenate
+LOAD DISTINCT 
+	[תאריך],
+	'ב-7 ימים אחרונים' as 'תקופה'
+RESIDENT DateField
+//	Facts
+Where
+	[תאריך]<=today()
+    and [תאריך]>=(today()-6)
+;
+
+Concatenate
+LOAD DISTINCT 
+	[תאריך],
+	'הכל' as 'תקופה'
+RESIDENT DateField
+//	Facts
+Where
+	[תאריך]<=today()
+    and [תאריך]>=AddYears(Today(),-3)
+;
+Concatenate
+LOAD DISTINCT 
+	[תאריך],
+	'ב-30 ימים אחרונים' as 'תקופה'
+RESIDENT DateField
+//	Facts
+Where
+	[תאריך]<=today()
+    and [תאריך]>=(today()-30)
+;
+
+Concatenate
+LOAD DISTINCT 
+	[תאריך],
+	'חודש נוכחי' as 'תקופה'
+RESIDENT DateField
+//	Facts
+Where
+	[תאריך]<=MonthEnd(today())
+    and [תאריך]>=MonthStart((today()))
+;
+Concatenate
+LOAD DISTINCT 
+	[תאריך],
+	'חודש קודם' as 'תקופה'
+RESIDENT DateField
+//	Facts
+Where
+	[תאריך]<=MonthEnd(AddMonths(Today(),-1))
+    and [תאריך]>=MonthStart((AddMonths(Today(),-1)))
+;
+
+
+Concatenate
+LOAD DISTINCT 
+	[תאריך],
+	'שבוע נוכחי' as 'תקופה'
+RESIDENT DateField
+//	Facts
+Where
+	[תאריך]<=today()
+    and [תאריך]>=WeekStart(today())
+;
+
+Concatenate
+LOAD DISTINCT 
+    [תאריך],
+   'היום' as 'תקופה'
+RESIDENT DateField
+//	Facts
+Where
+	[תאריך]=(today()) 
+;
+
+Concatenate
+LOAD DISTINCT 
+    [תאריך],
+   'שנה נוכחית' as 'תקופה'
+RESIDENT DateField
+//	Facts
+Where
+	year([תאריך])=year(today()) 
+;
+
+	Left join (Tkufot)
+		Load	
+			[תאריך],
+			 תקופה 			
+		 Resident
+			Taarichei_Tkufot;
+drop table Taarichei_Tkufot;
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+NoConcatenate
+
+Tkufot_Leasvaa:
+Load * INLINE [
+תקופה להשוואה,מיון תקופה להשוואה
+היום,0
+שבוע נוכחי,2
+אתמול,1
+ב-7 ימים אחרונים,3
+ב-30 ימים אחרונים,4
+חודש נוכחי,5
+חודש קודם,6
+שנה נוכחית,7
+הכל,8
+];  
+
+NoConcatenate
+
+Taarichei_Tkufot_Leasvaa:
+LOAD DISTINCT 
+	[תאריך להשוואה],
+	'אתמול' as 'תקופה להשוואה'
+RESIDENT
+	Tkufa_Hashvaa
+Where
+	[תאריך להשוואה]=(today()-1)
+;
+
+Concatenate
+LOAD DISTINCT 
+	[תאריך להשוואה],
+	'ב-7 ימים אחרונים' as 'תקופה להשוואה'
+RESIDENT
+	Tkufa_Hashvaa
+Where
+	[תאריך להשוואה]<=today()
+    and [תאריך להשוואה]>=(today()-6)
+;
+
+Concatenate
+LOAD DISTINCT 
+	[תאריך להשוואה],
+	'הכל' as 'תקופה להשוואה'
+RESIDENT
+	Tkufa_Hashvaa
+Where
+	[תאריך להשוואה]<=today()
+    and [תאריך להשוואה]>=AddYears(Today(),-3)
+;
+Concatenate
+LOAD DISTINCT 
+	[תאריך להשוואה],
+	'ב-30 ימים אחרונים' as 'תקופה להשוואה'
+RESIDENT
+	Tkufa_Hashvaa
+Where
+	[תאריך להשוואה]<=today()
+    and [תאריך להשוואה]>=(today()-30)
+;
+
+Concatenate
+LOAD DISTINCT 
+	[תאריך להשוואה],
+	'חודש נוכחי' as 'תקופה להשוואה'
+RESIDENT
+	Tkufa_Hashvaa
+Where
+	[תאריך להשוואה]<=MonthEnd(today())
+    and [תאריך להשוואה]>=MonthStart((today()))
+;
+Concatenate
+LOAD DISTINCT 
+	[תאריך להשוואה],
+	'חודש קודם' as 'תקופה להשוואה'
+RESIDENT
+	Tkufa_Hashvaa
+Where
+	[תאריך להשוואה]<=MonthEnd(AddMonths(Today(),-1))
+    and [תאריך להשוואה]>=MonthStart((AddMonths(Today(),-1)))
+;
+
+
+Concatenate
+LOAD DISTINCT 
+	[תאריך להשוואה],
+	'שבוע נוכחי' as 'תקופה להשוואה'
+RESIDENT
+	Tkufa_Hashvaa
+Where
+	[תאריך להשוואה]<=today()
+    and [תאריך להשוואה]>=WeekStart(today())
+;
+
+Concatenate
+LOAD DISTINCT 
+    [תאריך להשוואה],
+   'היום' as 'תקופה להשוואה'
+RESIDENT
+	Tkufa_Hashvaa
+Where
+	[תאריך להשוואה]=(today()) 
+;
+
+Concatenate
+LOAD DISTINCT 
+    [תאריך להשוואה],
+   'שנה נוכחית' as 'תקופה להשוואה'
+RESIDENT
+	Tkufa_Hashvaa
+Where
+	year([תאריך להשוואה])=year(today()) 
+;
+
+	Left join (Tkufot_Leasvaa)
+		Load	
+			[תאריך להשוואה],
+			[תקופה להשוואה]
+		Resident
+			Taarichei_Tkufot_Leasvaa;
+drop table Tkufot_Leasvaa;
+ 
+ 
+
+ 
+
+
+////////////////////////////////////// חגים ואינטרוול
+
+HagimTemp:
+Load
+    Date(Date#(TARIKH,'YYYYMMDD'),'DD/MM/YYYY') as 'תאריך',
+    if(DAY_DESC=TOR_CHG, TOR_CHG,DAY_DESC&'_'&TOR_CHG) AS 'חג'
+FROM 
+	[$(vQvdPath)\$(vCompany)_hagim.qvd] (qvd)
+	where TARIKH >= $(vLoadFrom)
+ 	and TARIKH<$(vToday);;
+join
+load * Inline 
+[אינטרוול
+-30
+-29
+-28
+-27
+-26
+-25
+-24
+-23
+-22
+-21
+-20
+-19
+-18
+-17
+-16
+-15
+-14
+-13
+-12
+-11
+-10
+-9
+-8
+-7
+-6
+-5
+-4
+-3
+-2
+-1
+0
+1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+29
+30
+
+]
+;
+
+
+
+NoConcatenate
+Hagim_Intervals:
+load Distinct
+חג, אינטרוול, date(תאריך+אינטרוול) as תאריך
+Resident HagimTemp;
+
+drop Table HagimTemp;
+
+
+NoConcatenate
+Hagim_leassvaa:
+Load
+    /*Date(Date#(TARIKH,'YYYYMMDD'),'DD/MM/YYYY')*/ תאריך as 'תאריך להשוואה',
+    /* if(DAY_DESC=TOR_CHG, TOR_CHG,DAY_DESC&'_'&TOR_CHG)*/חג  AS 'חג להשוואה',
+    אינטרוול as 'אינטרוול להשוואה'
+Resident Hagim_Intervals;
+//FROM 
+//	[$(vQvdPath)\hagim.qvd] (qvd)
+//;
+
+
+LoadTime:
+Load
+	Now() as LoadTime
+AutoGenerate (1)
+;
+
+let vCounter=0;
+let vCurrentTable = '';
+ 
+do while  vCurrentTable<>'tables_temp'
+  let vCurrentTable = tablename($(vCounter)) ;
+  tables_temp:
+  load table_name inline [
+table_name
+'$(vCurrentTable)'];
+  let vCounter = $(vCounter)+1;
+store $(vCurrentTable) into $(vQvdPath)\OUT_$(vCompany)_$(vCurrentTable).qvd
+  (qvd);
+loop  
+
+;
+
+
+LET vTkufaEnd='Max([תאריך להשוואה])';  
+LET vTkufaStart='Min([תאריך להשוואה])';  
+Let vMeasure1= '=[נוסחת מדד ראשון]';
+Let vMeasure2= '=[נוסחת מדד שני]';
+Let vMeasure3= '=[נוסחת מדד שלישי]';
+Let vMeasure4= '=[נוסחת מדד רביעי]';
+Let vMeasure5= '=[נוסחת מדד חמישי]';
+Let vMeasure6= '=[נוסחת מדד שישי]';
+Let vMeasure7= '=[נוסחת מדד שביעי]';
+Let vMeasure8= '=[נוסחת מדד שמיני]';
+Let vMeasure9= '=[נוסחת מדד תשיעי]';
+Let vMeasure10= '=[נוסחת מדד עשירי]';
+Let vMeasure11= '=[נוסחת מדד אחת עשר]';
+
+Let vMeasureUI1= '=[נוסחאת מדד לגרף ראשון]';
+Let vMeasureUI2= '=[נוסחאת מדד לגרף שני]';
+Let vMeasureUI2_1= '=[נוסחאת מדד לדרף שני שני]';
+Let vMeasureUI3= '=[נוסחאת מדד לגרף שלישי]';
+Let vMeasureUI3_1= '=[נוסחאת מדד לגרף שלישי_1]';
+Let vMeasureUI4= '=[נוסחאת מדד לגרף רביעי]';
+
+LET vTkufa1= '=[נוסחת מדד ראשון להשוואה]';
+LET vTkufa2= '=[נוסחת מדד שני להשוואה]';
+LET vTkufa3= '=[נוסחת מדד שלישי להשוואה]';
+LET vDim1='=[$ממד ראשון]';
+LET vDim2='=[$ממד שני]';
+LET vDim3='=[$ממד שלישי]';
+LET vDim4='=[$ממד רביעי]';
+LET vDim5='=[$ממד חמישי]';
+LET vDim6='=[$ממד שישי]';
+LET vDim7='=[$ממד שביעי]';
+LET vDim8='=[$ממד שמיני]';
+LET vDim9='=[$ממד תשיעי]';
+LET vDim10='=[$ממד עשירי]';
+LET vDim11='=[$ממד אחת עשר]';
+LET vDim11='=[$ממד אחת עשר]';
+LET vDim12='=[$ממד ראשון פריט קשור]';
+LET vDim13='=[$ממד שני פריט קשור]';
+
+let vDimUI1='=[$ממד לגרף ראשון]';
+let vDimUI2='=[$ממד לגרף שני]';
+let vDimUI3='=[$ממד לגרף שלישי]';
+let vDimUI4='=[$ממד לגרף רביעי]';
+
+
+LET vKat1='=[$קטלוג ראשון]';
+LET vKat2='=[$katalog_2]';
+LET vKat3='=[$katalog_3]';
+LET vKat4='=[$katalog_4]';
+LET vKat5='=[$katalog_5]';
+LET vKat6='=[$katalog_6]';
+LET vKat7='=[$katalog_7]';
+LET vKat8='=[$katalog_8]';
+LET vDim1NoDate='=[$ממד ראשון ללא תאריך]';
+LET vDim2NoDate='=[$ממד שני ללא תאריך]';
+LET vParameter_Lemismach= '=[$מסמך]';
+LET vMehiron='=[$MEHIRON]';
+
+
+ZERO_TO_NULL:
+Load * Inline [
+$ZERO_TO_NULL
+כן
+];
+
+MEHIRON:
+Load * Inline [
+$MEHIRON
+מחירון_0_עלות
+מחירון1
+מחירון2
+מחירון3
+מחירון4
+מחירון5
+מחירון6
+];
+
+parameter_lemismach:
+Load * Inline [
+$מסמך
+כמות פריטים לעסקה
+סכום בעסקה
+חתך שעה
+];
+
+Memad1:
+LOAD * Inline [   $ממד ראשון
+שנה
+רבעון
+חודש
+יום בשבוע
+יום
+תאריך
+פריט
+קוד פריט
+דגם
+קוד דגם
+חנות
+מגוון חנות 1
+מגוון חנות 2
+מגוון חנות 3
+מגוון חנות 4
+מגוון חנות 5
+מגוון חנות 6
+מגוון חנות 7
+מגוון חנות 8
+מגוון חנות 9
+מוכרן
+סוג פריט
+קוד סוג פריט
+סוג פריט קשור
+ספק 
+קוד ספק
+מגוון1 - ספק
+מגוון2 - ספק
+מגוון3 - ספק
+מגוון4 - ספק
+מגוון5 - ספק
+מגוון6 - ספק
+מגוון7 - ספק
+מגוון8 - ספק
+מגוון9 - ספק
+צבע
+מידה
+מותג
+מעצב/ת
+תדמני/ת
+סוג בד
+שנת דגם
+עונת דגם
+מגוון דגם 1
+מגוון דגם 2
+מגוון דגם 3
+מגוון דגם 4
+מגוון דגם 5
+מגוון דגם 6
+קולקציה
+לקוח
+ישוב לקוח
+קוד מבצע
+מבצע
+מזהה מסמך
+מספר מסמך
+מגוון פריט 1
+מגוון פריט 2
+מגוון פריט 3
+מגוון פריט 4
+מגוון פריט 5
+מגוון פריט 6
+פריט קשור
+איתור פריט
+איתור דגם
+הופקד בשובר
+פרטי תשלום
+סוג תשלום
+אשראי מנפיק
+אשראי סולק
+דוח Z 
+תאריך פתיחת Z
+תאריך סגירת Z
+שעת פתיחה Z 
+שעת סגירה Z
+תאריך תשלום
+מספר קבלה
+סוג תשלום
+סוג כרטיס/סוג תו
+בנק
+מספר לקוח
+שם לקוח
+שם מקוצר - לקוח
+פעיל? - לקוח
+כתובת - לקוח
+מיקוד - לקוח
+מס' בית - לקוח
+טלפון - לקוח
+פקס - לקוח
+יתרת קרדיט
+מדינה
+  % ניכוי
+בתוקף עד
+ח"פ/ע"מ/ת"ז
+יתרת חובה
+% הנחה
+ת. עסקה אחרונה
+קוד מועדון/תנאי תשלום
+ת. לידה - לקוח
+עיסוק
+הערות
+ת. פתיחה לקוח
+ת. עדכון
+משתמש
+מחירון - לקוח
+שיוך לחנות - חנות
+מספר הנה"ח
+חודש ויום לידה
+לקוח אב
+% מע"מ
+סוכן - לקוח
+אובליגו
+יתרת קניות
+יתרת משלוחים
+תיקוני יתרה
+יש כרטיס מועדון?
+דירה
+מגוון1 - לקוח
+מגוון2 - לקוח
+מגוון3 - לקוח
+מגוון4 - לקוח
+מגוון5 - לקוח
+מגוון6 - לקוח
+מגוון7 - לקוח
+מגוון8 - לקוח
+מגוון9 - לקוח
+מין
+ת. לידה משוער
+סטטוס כרטיס
+נייד
+רשת
+טלפון נוסף
+לקוח/עובד
+ת. חידוש מועדון
+אישור קבלת דיוור
+אישור קבלת דוא"ל
+אישור קבלת SMS
+ת. הצטרפות למועדון
+כניסה
+מ. טופס הצטרפות
+סוג אירוע
+פרטי אירוע
+קופאי/ת
+סוג תנועת מלאי
+קבוצת אמצעי תשלום
+קוד תנועת נוכחות 
+תיאור תנועת נוכחות 
+גיל לקוח
+עובד
+שטח החנות במר
+מחירון_0_עלות
+מחירון 1
+מחירון 2
+מחירון 3
+מחירון 4
+מחירון 5
+מחירון 6
+Email כתובת
+2 Email כתובת
+סיווג נוסף1
+סיווג נוסף2
+סיווג נוסף3
+מספר קבלת זיכוי
+מספר קבלה
+סוג אשראי
+סכום בשורת קבלה
+ספק אשראי
+מסוף אשראי
+מזהה מבצע ברמת שורה
+מזהה מבצע ברמת מסמך
+מחירון - חנות
+ישוב - חנות
+שם מקוצר - חנות
+פעיל? - חנות
+כתובת - חנות
+מיקוד - חנות
+מס' בית - חנות
+טלפון - חנות
+פקס - חנות
+ח"פ/ע"מ - חנות
+שיוך לחנות - לקוח
+מספר הנה"ח - חנות
+נייד - חנות
+טלפון נוסף - חנות
+מחסן לוגיסטי
+חנות אב
+ישוב - עובד
+Email עובד - כתובת
+חודש ויום לידה - עובד
+משתמש - עובד
+ת. עדכון - עובד
+עיסוק - עובד
+הערות - עובד
+ת. לידה - עובד
+כתובת - עובד
+פעיל? - עובד
+מספר הנה"ח - עובד
+שם מקוצר - עובד
+מיקוד - עובד
+מס' בית - עובד
+טלפון - עובד
+פקס - עובד
+נייד - עובד
+טלפון נוסף - עובד
+% ניכוי - עובד
+ת"ז - עובד   
+רשת-לקוח
+רשת-עובד
+רשת-חנות
+מספר זיכוי
+האם נפדה זיכוי?
+נפדה בחנות
+נפדה ע"י מספר חשבונית
+נפדה בתאריך
+איך נפדה זיכוי
+סניף
+חנות ושם מקוצר
+סוג לקוח
+קוד פריט קשור
+דגם קשור
+דגם לעסקאות
+מטבע מסמך
+מטבע קבלה
+מחירון - עובד
+ת. פתיחה עובד
+שיוך לחנות - עובד
+סוכן - חנות
+אסמכתא
+שבוע
+חתך שעה
+]  ;
+
+
+
+
+Memad2:
+Load
+	[$ממד ראשון] as '$ממד שני'
+Resident
+	Memad1
+;
+
+Memad3:
+Load
+	[$ממד ראשון] as '$ממד שלישי'
+Resident
+	Memad1
+;
+
+Memad4:
+Load
+	[$ממד ראשון] as '$ממד רביעי'
+Resident
+	Memad1
+;
+
+Memad5:
+Load
+	[$ממד ראשון] as '$ממד חמישי'
+Resident
+	Memad1
+;
+
+Memad6:
+Load
+	[$ממד ראשון] as '$ממד שישי'
+Resident
+	Memad1
+;
+
+Memad7:
+Load
+	[$ממד ראשון] as '$ממד שביעי'
+Resident
+	Memad1
+;
+
+Memad8:
+Load
+	[$ממד ראשון] as '$ממד שמיני'
+Resident
+	Memad1
+;
+
+Memad9:
+Load
+	[$ממד ראשון] as '$ממד תשיעי'
+Resident
+	Memad1
+;
+
+Memad10:
+Load
+	[$ממד ראשון] as '$ממד עשירי'
+Resident
+	Memad1
+;
+
+Memad11:
+Load
+	[$ממד ראשון] as '$ממד אחת עשר'
+Resident
+	Memad1
+;
+
+
+Memad_1_UI:
+Load
+	[$ממד ראשון] as '$ממד לגרף ראשון'
+Resident
+	Memad1
+;
+
+Memad_2_UI:
+Load
+	[$ממד ראשון] as '$ממד לגרף שני'
+Resident
+	Memad1
+;
+
+
+Memad_3_UI:
+Load
+	[$ממד ראשון] as '$ממד לגרף שלישי'
+Resident
+	Memad1
+;
+
+
+Memad_4_UI:
+Load
+	[$ממד ראשון] as '$ממד לגרף רביעי'
+Resident
+	Memad1
+;
+
+
+Memad12:
+Load
+[$ממד ראשון] as '$ממד ראשון פריט קשור'
+
+Resident
+	Memad1
+    Where	Match([$ממד ראשון],
+'קוד פריט קשור',
+'פריט קשור',
+'דגם קשור',
+'סוג פריט קשור'
+)  
+;
+
+Memad13:
+Load
+[$ממד ראשון] as '$ממד שני פריט קשור'
+
+Resident
+	Memad1
+    Where	Match([$ממד ראשון],
+'קוד פריט',
+'פריט',
+'דגם',
+'סוג פריט'
+
+)  
+;
+
+
+
+
+
+
+Madad1_Lehasvaa:
+LOAD
+    מדד  as '$מדד ראשון',
+ //   "נוסחת מדד",
+    "נוסחת מדד להשוואה"  as 'נוסחת מדד ראשון להשוואה'
+FROM [https://docs.google.com/spreadsheets/d/e/2PACX-1vR45SUZcE6PpvDcFMcMUjeJ4t1-eVw_Uiycuv3Du2l0-4bMXPARzmlbau6vKkshL9qYkSwUBLYSGKfg/pub?output=csv]
+(txt, utf8, embedded labels, delimiter is ',', msq);
+
+
+//////////SCRIPT
+
+Madad2_hshvaa:
+Load
+	[$מדד ראשון] as '$מדד שני',
+    [נוסחת מדד ראשון להשוואה] as 'נוסחת מדד שני להשוואה'
+Resident
+	Madad1_Lehasvaa
+;
+
+
+Madad3_hshvaa:
+Load
+	[$מדד ראשון] as '$מדד שלישי',
+    [נוסחת מדד ראשון להשוואה] as 'נוסחת מדד שלישי להשוואה'
+Resident
+	Madad1_Lehasvaa
+;
+
+NoConcatenate
+
+
+
+Madad1:
+LOAD
+    מדד  as '$מדד ראשון',
+    "נוסחת מדד" as 'נוסחת מדד ראשון' 
+FROM [https://docs.google.com/spreadsheets/d/e/2PACX-1vR45SUZcE6PpvDcFMcMUjeJ4t1-eVw_Uiycuv3Du2l0-4bMXPARzmlbau6vKkshL9qYkSwUBLYSGKfg/pub?output=csv]
+(txt, utf8, embedded labels, delimiter is ',', msq);
+
+   
+Madad2:
+Load
+	[$מדד ראשון] as '$מדד שני',
+    [נוסחת מדד ראשון] as 'נוסחת מדד שני'
+Resident
+	Madad1
+;
+
+Madad3:
+Load
+	[$מדד ראשון] as '$מדד שלישי',
+    [נוסחת מדד ראשון] as 'נוסחת מדד שלישי'
+Resident
+	Madad1
+;
+
+Madad4:
+Load
+	[$מדד ראשון] as '$מדד רביעי',
+    [נוסחת מדד ראשון] as 'נוסחת מדד רביעי'
+Resident
+	Madad1
+;
+
+Madad5:
+Load
+	[$מדד ראשון] as '$מדד חמישי',
+    [נוסחת מדד ראשון] as 'נוסחת מדד חמישי'
+Resident
+	Madad1
+;
+
+
+Madad6:
+Load
+	[$מדד ראשון] as '$מדד שישי',
+    [נוסחת מדד ראשון] as 'נוסחת מדד שישי'
+Resident
+	Madad1
+;
+
+Madad7:
+Load
+	[$מדד ראשון] as '$מדד שביעי',
+    [נוסחת מדד ראשון] as 'נוסחת מדד שביעי'
+Resident
+	Madad1
+;
+
+Madad8:
+Load
+	[$מדד ראשון] as '$מדד שמיני',
+    [נוסחת מדד ראשון] as 'נוסחת מדד שמיני'
+Resident
+	Madad1
+;
+
+Madad9:
+Load
+	[$מדד ראשון] as '$מדד תשיעי',
+    [נוסחת מדד ראשון] as 'נוסחת מדד תשיעי'
+Resident
+	Madad1
+;
+
+Madad10:
+Load
+	[$מדד ראשון] as '$מדד עשירי',
+    [נוסחת מדד ראשון] as 'נוסחת מדד עשירי'
+Resident
+	Madad1
+;
+Madad11:
+Load
+	[$מדד ראשון] as '$מדד אחת עשר',
+    [נוסחת מדד ראשון] as 'נוסחת מדד אחת עשר'
+Resident
+	Madad1
+;
+
+Madad_1_UI:
+Load
+	[$מדד ראשון] as '$מדד לגרף ראשון',
+    [נוסחת מדד ראשון] as 'נוסחאת מדד לגרף ראשון'
+Resident
+	Madad1
+;
+
+Madad_2_UI:
+Load
+	[$מדד ראשון] as '$מדד לגרף שני',
+    [נוסחת מדד ראשון] as 'נוסחאת מדד לגרף שני'
+Resident
+	Madad1
+;
+
+Madad_2_1_UI:
+Load
+	[$מדד ראשון] as '$מדד לגרף שני שני',
+    [נוסחת מדד ראשון] as 'נוסחאת מדד לדרף שני שני'
+Resident
+	Madad1
+;
+
+
+Madad_3_UI:
+Load
+	[$מדד ראשון] as '$מדד לגרף שלישי',
+    [נוסחת מדד ראשון] as 'נוסחאת מדד לגרף שלישי'
+Resident
+	Madad1
+;
+
+Madad_3_1_UI:
+Load
+	[$מדד ראשון] as '$מדד לגרף שלישי_1',
+    [נוסחת מדד ראשון] as 'נוסחאת מדד לגרף שלישי_1'
+Resident
+	Madad1
+;
+
+Madad_4_UI:
+Load
+	[$מדד ראשון] as '$מדד לגרף רביעי',
+    [נוסחת מדד ראשון] as 'נוסחאת מדד לגרף רביעי'
+Resident
+	Madad1
+;
+
+
+
+//-----ממדים להשוואת תקופות
+Memad1_No_Date:
+Load
+	[$ממד ראשון] as '$ממד ראשון ללא תאריך'
+Resident
+	Memad1
+Where
+	Match([$ממד ראשון],'שנה','רבעון','חודש','יום בשבוע','יום','תאריך') = 0
+;
+
+Memad2_No_Date:
+Load
+	[$ממד ראשון ללא תאריך] as '$ממד שני ללא תאריך'
+Resident
+	Memad1_No_Date
+;
+
+Set FirstDate = num('01/01/2014'); //01/01/2012
+Set LastDate =  num('01/01/2018'); //01/01/2012
+
+DateList:
+Load
+date(RecNo( )+$(FirstDate)-1) as DATE
+autogenerate ($(LastDate)-$(FirstDate)-1);
+
+Cal:
+LOAD Distinct
+DATE as תאריך,
+Floor(DATE) AS DateNum,
+'Q'&ceil(num(Month(DATE))/3) AS Quarter,
+Year(DATE) AS Year,
+'Q'&ceil(num(Month(DATE))/3)&' '&Year(DATE) AS QuarterName,
+MonthName(DATE) AS MonthName,
+Month(DATE) AS Month,
+if(DATE >= MonthStart(AddMonths(Today(),-11)) and MonthStart(DATE) <= MonthStart(Today()) ,'Y') AS L12Month,
+IF((Today()- monthstart(Today()))<= 4, if(MonthStart(DATE) = MonthStart(Today()-5) ,'Y'),
+                                         if(MonthStart(DATE) = MonthStart(Today()) ,'Y')) AS CurrentMonth,
+num(Month(DATE)) AS MonthNum,
+(Year(DATE)-1)*12 + num(Month(DATE)) as MonthID,
+(Year(today())-1)*12 + num(Month(today(0))) as CurMonthID,
+Month(Today()-30) AS LastMonth,
+WeekDay(DATE) AS WeekDay,
+Day(DATE) AS Day,
+Week(DATE) AS Week,
+WeekStart(DATE) AS WeekStart,
+Year2Date(DATE,year(DATE)-year(Today())) AS Y2D
+Resident DateList;
+
+left join
+Load Distinct
+MonthNum,
+if(MonthNum = num(Month(Today())), day(Today())/day(MonthEnd(Today())),1) AS MonthPart,
+if(MonthNum <= num(Month(Today())) ,1,0) AS YTD_Flag,
+if(MonthNum <= num(Month(Today())) ,'Yes') AS [YTM?] 
+Resident Cal;
+
+drop Table DateList;
+
